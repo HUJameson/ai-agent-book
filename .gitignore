@@ -89,3 +89,10 @@ chapter1/web-search-agent/validation/*
 chapter1/search-codegen/validation/*
 chapter1/image-gen-workflow/validation/*
 chapter1/learning-from-experience/validation/*
+.opencode
+opencode.json
+*.code-workspace
+
+# 本地一次性运行产物（CLI --output 示例输出）
+chapter1/web-search-agent/demo.json
+chapter1/web-search-agent/result.json
