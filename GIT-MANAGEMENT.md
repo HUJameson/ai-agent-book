@@ -68,6 +68,7 @@ scope：章节或模块名（如 ch1、webui、deps）
 ```bash
 # 同步上游（建议每周）
 git fetch upstream && git rebase upstream/main && git push origin main
+# 若 pyproject.toml / uv.lock 冲突 → 保留己方 numpy 行后重新 uv lock（见第二部分"与上游的分叉点"）
 
 # 新功能
 git checkout -b feature/xxx    # 开发 → push → PR（CI 门禁）→ 合并
@@ -97,6 +98,22 @@ gitleaks detect --source .     # 本地密钥扫描（已安装 v8.30.1）
 1. **增量扫描策略**：上游全历史命中 2141 处（占位 key 与服务端标识符，属上游公开仓库现状），fork 不对历史负责；push 只扫 before..after 区间，PR 扫 origin/base..HEAD，手动触发只扫 HEAD。
 2. **误报放行**：本人提交命中 6 处，均为 validation/latest.json 中 Moonshot 响应返回的 access_token_id（ak- 前缀服务端会话标识符，非 sk- 账户密钥，无法调用 API）。以 .gitleaks.toml 精确 allowlist 放行，保留证据文件完整。
 3. **版本坑记录**（已写入 .gitleaks.toml 注释）：.gitignore 的 .* 规则会吞掉 .gitleaks.toml（需白名单）；gitleaks ≥ 8.21 在 extend 模式下必须用 [[allowlists]] 数组语法，且 regexes 匹配的是提取出的 secret 值而非整行。
+
+### 与上游的分叉点：numpy 依赖（维护必读）
+
+提交 7dde46ce（numpy >=1.26.4 → >=2.1.0 并重新 lock）是本 fork 与上游的**主要分叉点**。
+
+| 场景 | pyproject 下限 | uv.lock 实际锁定（macOS arm64 + Python 3.12） |
+|---|---|---|
+| 上游 | numpy>=1.26.4 | macOS 全场景钉在 1.26.4；Linux 早已用 2.4.6（分平台矩阵） |
+| 本 fork | numpy>=2.1.0 | macOS arm64 → 2.4.6（本地 venv 实际安装版本） |
+
+**为什么上游不升级**：pyproject 里的是"最低版本下限"，实际安装由 uv.lock 决定。上游 lock 矩阵中 Linux 用户早已在用 numpy 2.4.6，只是把 macOS 场景保守地钉在 1.26.4（兼容各类读者环境与 numpy 2.x 在特定 mac 依赖上的 ABI 风险）。本 fork 环境为 macOS arm64 + Python 3.12，不装 vllm/unsloth GPU 训练栈，无此包袱，故抬高下限并重新 lock（连带刷新依赖树，产生约 4000 行 diff）。
+
+**同步上游时的处置**（二选一）：
+
+1. **保留本 fork 版本（当前策略）**：rebase 遇 pyproject/uv.lock 冲突时，保留己方 numpy 行，然后运行 `uv lock` 重新生成 lock，由 CI 验证；
+2. **回归上游版本**：仅当 macOS 上真出现 numpy 2.x 兼容问题时才考虑，还原后 macOS 回到 1.26.4。
 
 ---
 
