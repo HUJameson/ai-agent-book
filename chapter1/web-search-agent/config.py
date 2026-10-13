@@ -6,10 +6,6 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 
-load_dotenv()
-
-from dotenv import load_dotenv
-
 # Read the nearest .env, searching upward from the working directory, so a
 # single file at the repository root serves every chapter.
 load_dotenv()
