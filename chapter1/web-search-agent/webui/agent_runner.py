@@ -107,9 +107,7 @@ class HistoryStore:
     def add(self, record: Dict[str, Any]) -> Dict[str, Any]:
         entry = dict(record)
         entry["id"] = _new_id()
-        entry["created_at"] = datetime.now(timezone.utc).isoformat(
-            timespec="seconds"
-        )
+        entry["created_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self._items.append(entry)
         self._index[entry["id"]] = entry
         while len(self._items) > self._limit:

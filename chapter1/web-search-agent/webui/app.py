@@ -121,18 +121,14 @@ def clear_history() -> Dict[str, Any]:
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
     logger.exception("未处理异常")
-    return JSONResponse(
-        status_code=500, content={"detail": f"服务器内部错误: {exc}"}
-    )
+    return JSONResponse(status_code=500, content={"detail": f"服务器内部错误: {exc}"})
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Kimi Web Search Agent 本地 Web GUI"
-    )
+    parser = argparse.ArgumentParser(description="Kimi Web Search Agent 本地 Web GUI")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认仅本机）")
     parser.add_argument("--port", type=int, default=8000, help="监听端口（默认 8000）")
     args = parser.parse_args()

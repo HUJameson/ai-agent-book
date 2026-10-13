@@ -121,8 +121,12 @@ def test_ask_kimi_params_passthrough(client, monkeypatch):
     monkeypatch.setattr(agent_runner, "run_question", fake)
 
     payload = _ask_payload(
-        "比特币现价", provider="kimi", model="kimi-k3",
-        max_steps=3, temperature=0.9, timeout=60,
+        "比特币现价",
+        provider="kimi",
+        model="kimi-k3",
+        max_steps=3,
+        temperature=0.9,
+        timeout=60,
     )
     res = client.post("/api/ask", json=payload)
     assert res.status_code == 200
@@ -132,8 +136,11 @@ def test_ask_kimi_params_passthrough(client, monkeypatch):
     question, options = fake.calls[0]
     assert question == "比特币现价"
     assert options == {
-        "provider": "kimi", "model": "kimi-k3", "max_steps": 3,
-        "temperature": 0.9, "timeout": 60,
+        "provider": "kimi",
+        "model": "kimi-k3",
+        "max_steps": 3,
+        "temperature": 0.9,
+        "timeout": 60,
     }
 
 
@@ -152,8 +159,9 @@ def test_ask_kimi_failure_answer_maps_to_error_status(client, monkeypatch):
             return MAX_ITERATIONS_MESSAGE
 
         def get_trace(self):
-            return [{"iteration": 1, "type": "answer",
-                     "content": MAX_ITERATIONS_MESSAGE}]
+            return [
+                {"iteration": 1, "type": "answer", "content": MAX_ITERATIONS_MESSAGE}
+            ]
 
     monkeypatch.setattr(agent_runner, "has_any_key", lambda: True)
     monkeypatch.setattr(agent_runner, "WebSearchAgent", _StubAgent)
@@ -171,13 +179,13 @@ def test_ask_kimi_failure_answer_maps_to_error_status(client, monkeypatch):
 @pytest.mark.parametrize(
     "payload",
     [
-        {"question": "   "},                       # 空白问题
-        {"question": "x" * 4001},                  # 超长问题
-        _ask_payload(provider="bogus"),            # 非法 provider
-        _ask_payload(max_steps=0),                 # max_steps 下界
-        _ask_payload(max_steps=11),                # max_steps 上界
-        _ask_payload(temperature=2.5),             # temperature 上界
-        _ask_payload(timeout=0),                   # timeout 必须为正
+        {"question": "   "},  # 空白问题
+        {"question": "x" * 4001},  # 超长问题
+        _ask_payload(provider="bogus"),  # 非法 provider
+        _ask_payload(max_steps=0),  # max_steps 下界
+        _ask_payload(max_steps=11),  # max_steps 上界
+        _ask_payload(temperature=2.5),  # temperature 上界
+        _ask_payload(timeout=0),  # timeout 必须为正
     ],
 )
 def test_ask_validation_rejected(client, payload):
@@ -200,9 +208,19 @@ def test_clear_history(client):
 
 def test_history_fifo_limit():
     store = HistoryStore(limit=3)
-    ids = [store.add({"question": f"q{i}", "answer": "a", "status": "success",
-                      "trace": [], "params": {}, "elapsed_seconds": 0})["id"]
-           for i in range(5)]
+    ids = [
+        store.add(
+            {
+                "question": f"q{i}",
+                "answer": "a",
+                "status": "success",
+                "trace": [],
+                "params": {},
+                "elapsed_seconds": 0,
+            }
+        )["id"]
+        for i in range(5)
+    ]
     assert len(store) == 3
     assert store.get(ids[0]) is None and store.get(ids[1]) is None
     assert store.get(ids[2]) is not None and store.get(ids[4]) is not None
