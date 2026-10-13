@@ -1,0 +1,16 @@
+# gitleaks 配置：扩展默认规则，放行已知误报。
+# 背景：上游历史与 validation/ 证据文件中存在大量占位 key 与服务端标识符，
+# 本仓库只对新增提交负责（见 .github/workflows/secret-scan.yml）。
+# 注意：gitleaks >= 8.21 在 [extend] 模式下必须用 [[allowlists]] 数组语法，
+# 旧的单一 [allowlist] 会被默认规则覆盖。
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Moonshot Formula 响应中的 access_token_id：服务端会话标识符（ak- 前缀），非账户凭据，无法用于 API 调用"
+# regexes 数组同时覆盖两种匹配目标：整行内容 与 提取出的 secret 值，
+# 兼容不同 gitleaks 版本的 allowlist 语义。
+regexes = [
+  '''"?access_token_id"?\s*:\s*"ak-[A-Za-z0-9]+"''',
+  '''^ak-[A-Za-z0-9]{8,23}$''',
+]
