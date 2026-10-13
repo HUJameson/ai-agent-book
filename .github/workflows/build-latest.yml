@@ -66,6 +66,10 @@ concurrency:
 
 jobs:
   build:
+    # PDF/EPUB 构建只服务于上游的 rolling latest release；fork 上既不发布、
+    # 也要为每次书稿变更烧 30+ 分钟 macOS runner，因此整体跳过。
+    # 需要在 fork 上验证构建时，临时注释本行或用 workflow_dispatch 前先移除。
+    if: github.repository == 'bojieli/ai-agent-book'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
