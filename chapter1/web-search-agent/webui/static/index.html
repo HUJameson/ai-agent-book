@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kimi Web Search Agent</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>🤖 Kimi Web Search Agent</h1>
+  <p class="subtitle">ReAct 循环演示：💭 思考 → 🔧 行动（web_search）→ 👀 观察 → ✅ 最终答案</p>
+</header>
+
+<div class="layout">
+  <aside>
+    <section class="panel">
+      <h2>⚙️ 参数设置</h2>
+      <label>搜索后端 provider
+        <select id="opt-provider">
+          <option value="kimi">kimi（联网搜索，需 API Key）</option>
+          <option value="offline-demo">offline-demo（离线示例轨迹）</option>
+        </select>
+      </label>
+      <label>模型 model
+        <input id="opt-model" type="text">
+      </label>
+      <label>最大迭代 max_steps（1-10）
+        <input id="opt-max-steps" type="number" min="1" max="10" step="1">
+      </label>
+      <label>temperature（0-2，推理模型自动取 1）
+        <input id="opt-temperature" type="number" min="0" max="2" step="0.1">
+      </label>
+      <label>超时 timeout（秒）
+        <input id="opt-timeout" type="number" min="1" max="3600" step="1">
+      </label>
+      <p class="hint">修改后对下一次提问生效；API Key 由服务端从环境变量读取。</p>
+    </section>
+
+    <section class="panel">
+      <h2>🕘 历史记录 <button id="clear-history" class="link-btn" title="清空全部历史">清空</button></h2>
+      <ul id="history-list"></ul>
+    </section>
+  </aside>
+
+  <main>
+    <section class="ask-panel">
+      <textarea id="question" rows="3"
+        placeholder="输入您的问题，例如：2024年诺贝尔物理学奖获得者是谁？（Ctrl/⌘ + Enter 提问）"></textarea>
+      <div class="ask-row">
+        <button id="ask-btn">提问</button>
+        <span id="status-hint"></span>
+      </div>
+    </section>
+
+    <section id="error-box" class="error-box hidden"></section>
+
+    <section id="result" class="hidden">
+      <h2>📝 回答</h2>
+      <div id="answer" class="answer"></div>
+      <h2>🔍 ReAct 轨迹（想 → 做 → 看）</h2>
+      <div id="trace"></div>
+      <p id="meta" class="meta"></p>
+    </section>
+  </main>
+</div>
+
+<script src="/static/marked.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
