@@ -211,9 +211,73 @@ function renderSingleResult(entry) {
     tl.innerHTML = '<div class="tl-item"><span class="tl-head">（本次没有工具调用）</span></div>';
   }
 
+  renderContextTurns(entry);
+
   $("meta").textContent =
     `provider=${entry.params?.provider ?? "?"} · mode=${entry.context_mode} · ` +
     `${entry.created_at}`;
+}
+
+// ---------- 每轮实发上下文（实验 1-1 的本体证据） ----------
+const ROLE_LABEL = { system: "系统", user: "用户", assistant: "助手", tool: "工具" };
+
+function renderContextTurns(entry) {
+  const box = $("ctx-turns");
+  box.innerHTML = "";
+  const turns = entry.trajectory?.api_turns || [];
+  if (!turns.length) {
+    box.innerHTML = '<div class="tl-item"><span class="tl-head">（无请求记录）</span></div>';
+    return;
+  }
+  turns.forEach((turn, idx) => {
+    const details = document.createElement("details");
+    details.className = "ctx-turn";
+    if (idx === turns.length - 1) details.open = true;
+
+    const toolFlag = turn.tools_included
+      ? '<span class="ctx-flag ok">工具定义 ✓</span>'
+      : '<span class="ctx-flag fail">无工具定义</span>';
+    const summary = document.createElement("summary");
+    summary.className = "tl-head";
+    summary.innerHTML =
+      `<b>第 ${escapeHtml(turn.iteration ?? idx + 1)} 轮</b>` +
+      ` · ${turn.messages?.length ?? 0} 条消息 ` +
+      `<span class="ctx-flag">${escapeHtml(turn.model || "")}</span> ${toolFlag}`;
+
+    const body = document.createElement("div");
+    body.className = "ctx-body";
+    (turn.messages || []).forEach((m) => {
+      const row = document.createElement("div");
+      row.className = "msg-row";
+      const isEmptyTool = m.role === "tool" && !m.content;
+      const role = document.createElement("span");
+      role.className = `msg-role role-${m.role}`;
+      role.textContent = ROLE_LABEL[m.role] || m.role;
+      const pre = document.createElement("pre");
+      pre.className = "msg-content" + (isEmptyTool ? " msg-empty" : "");
+      if (isEmptyTool) {
+        pre.textContent = "（空 —— 本轮工具结果未回传给模型）";
+      } else {
+        pre.textContent = (m.content || "") + (m.truncated ? "\n…（已截断）" : "");
+      }
+      row.append(role, pre);
+      // 助手消息附带的工具调用与思考标记
+      const extra = [];
+      if (m.tool_calls?.length) {
+        extra.push("🔧 " + m.tool_calls.map((t) => t.name).join(", "));
+      }
+      if (m.has_reasoning) extra.push("💭 含思考过程");
+      if (extra.length) {
+        const tag = document.createElement("span");
+        tag.className = "msg-extra";
+        tag.textContent = extra.join(" · ");
+        row.append(tag);
+      }
+      body.append(row);
+    });
+    details.append(summary, body);
+    box.append(details);
+  });
 }
 
 // ---------- 消融套件 ----------

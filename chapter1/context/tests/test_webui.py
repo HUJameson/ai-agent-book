@@ -319,6 +319,97 @@ def test_history_fifo_limit():
     assert store.get(ids[4]) is not None
 
 
+# ---------------------------------------------------------------------------
+# 逐轮实发上下文视图（实验 1-1 本体证据，DESIGN D9）
+# ---------------------------------------------------------------------------
+class _FakeTrajectory:
+    def __init__(self, api_turns):
+        self.api_turns = api_turns
+
+
+def test_trajectory_view_exposes_sent_messages():
+    from webui.agent_runner import trajectory_view
+
+    trajectory = _FakeTrajectory(
+        [
+            {
+                "iteration": 1,
+                "request": {
+                    "model": "kimi-k3",
+                    "tools": [{"type": "function"}],
+                    "messages": [
+                        {"role": "system", "content": "You are an assistant."},
+                        {"role": "user", "content": "把 1000 美元换算成欧元"},
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "convert_currency",
+                                        "arguments": "{}",
+                                    }
+                                }
+                            ],
+                        },
+                        {"role": "tool", "tool_call_id": "x", "content": ""},
+                    ],
+                },
+            },
+        ]
+    )
+    view = trajectory_view(trajectory)
+    assert len(view) == 1
+    turn = view[0]
+    assert turn["iteration"] == 1
+    assert turn["tools_included"] is True
+    roles = [m["role"] for m in turn["messages"]]
+    assert roles == ["system", "user", "assistant", "tool"]
+    # 空 tool 消息必须原样暴露（no_tool_results 模式的铁证）
+    assert turn["messages"][3]["content"] is None
+    # 助手消息附带工具调用与思考标记
+    assert turn["messages"][2]["tool_calls"][0]["name"] == "convert_currency"
+
+
+def test_trajectory_view_truncates_and_flags_reasoning():
+    from webui.agent_runner import trajectory_view, _MESSAGE_VIEW_LIMIT
+
+    long_text = "x" * (_MESSAGE_VIEW_LIMIT + 500)
+    trajectory = _FakeTrajectory(
+        [
+            {
+                "iteration": 1,
+                "request": {
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": long_text,
+                            "reasoning_content": "thinking...",
+                        },
+                    ]
+                },
+            },
+        ]
+    )
+    view = trajectory_view(trajectory)
+    msg = view[0]["messages"][0]
+    assert msg["truncated"] is True
+    assert len(msg["content"]) < _MESSAGE_VIEW_LIMIT + 100
+    assert msg["has_reasoning"] is True
+
+
+def test_trajectory_view_caps_turns():
+    from webui.agent_runner import trajectory_view, _MAX_TURNS_VIEW
+
+    trajectory = _FakeTrajectory(
+        [
+            {"iteration": i, "request": {"messages": []}}
+            for i in range(_MAX_TURNS_VIEW + 5)
+        ]
+    )
+    assert len(trajectory_view(trajectory)) == _MAX_TURNS_VIEW
+
+
 def test_clear_history_and_404(client, monkeypatch, ready):
     monkeypatch.setattr(
         agent_runner,

@@ -252,6 +252,46 @@ textarea {
 }
 .meta { color: var(--muted); font-size: 11.5px; }
 
+/* ---------- 每轮实发上下文 ---------- */
+.ctx-turn {
+  border: 1px solid var(--border); border-radius: 10px;
+  margin-bottom: 8px; background: rgba(5, 7, 15, 0.4);
+}
+.ctx-turn > summary {
+  padding: 9px 13px; cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.ctx-turn > summary::-webkit-details-marker { display: none; }
+.ctx-flag {
+  font-size: 10.5px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1); color: var(--muted);
+}
+.ctx-flag.ok { color: var(--ok); background: rgba(52, 211, 153, 0.1); }
+.ctx-flag.fail { color: var(--fail); background: rgba(248, 113, 113, 0.12); }
+.ctx-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.msg-row { display: flex; gap: 8px; align-items: flex-start; }
+.msg-role {
+  flex: none; font-size: 10.5px; padding: 3px 9px; border-radius: 6px;
+  margin-top: 2px; font-weight: 600;
+}
+.role-system { color: #c4b5fd; background: rgba(167, 139, 250, 0.15); }
+.role-user { color: #7dd3fc; background: rgba(56, 189, 248, 0.12); }
+.role-assistant { color: #86efac; background: rgba(74, 222, 128, 0.12); }
+.role-tool { color: #fdba74; background: rgba(251, 146, 60, 0.12); }
+.msg-content {
+  flex: 1; margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  border-radius: 8px; background: rgba(5, 7, 15, 0.55); border: 1px solid var(--border);
+  white-space: pre-wrap; overflow-wrap: break-word; max-height: 220px; overflow-y: auto;
+  color: #c9cede;
+}
+.msg-content.msg-empty {
+  color: var(--fail); border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.06); font-style: italic;
+}
+.msg-extra {
+  flex: none; font-size: 10px; color: var(--grad-b); align-self: center;
+}
+
 /* ---------- 消融进度 ---------- */
 .progress-grid { display: grid; gap: 8px; margin: 8px 0 4px; }
 .pg-row { display: grid; gap: 8px; grid-template-columns: 170px 1fr; align-items: center; }

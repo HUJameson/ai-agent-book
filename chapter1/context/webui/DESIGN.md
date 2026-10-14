@@ -36,10 +36,12 @@
   // single 专属
   "task": "...", "final_answer": "...", "context_mode": "full",
   "trajectory": {"tool_calls": [{"tool_name","arguments","result"}],
-                 "reasoning_steps_count": 3, "api_turns_count": 4},
+                 "reasoning_steps_count": 3, "api_turns_count": 4,
+                 "api_turns": [{"iteration": 1, "model": "...", "tools_included": true,
+                                "messages": [{"role": "tool", "content": null,
+                                              "truncated": false}]}]},
   "grounding": {"verdict": "grounded|ungrounded|...", "unsupported_quantities": []},
-  "elapsed_seconds": 42.1, "status": "success | error", "error": null,
-  // ablation 专属
+  "elapsed_seconds": 42.1, "status": "success | error", "error": null,  // ablation 专属
   "job_id": "job_...", "results_summary": [{"case_name","context_mode",
              "completed","grounding_verdict","iterations","num_tool_calls",
              "execution_time"}],
@@ -63,6 +65,7 @@
 | D6 | 视觉系统：CSS design tokens + 玻璃拟态 + Chart.js 暗色预设；动效仅 CSS（渐变位移/悬停浮起/脉冲/弹入），零 JS 动画库 | "炫酷"约束下的最小技术面；Chart.js 单文件 vendor 保离线 | 粒子背景（用户已否）；Tailwind/构建链（违反零构建） | 需维护一份 ~40 行 token 清单；Chart.js v4 约 200KB |
 | D7 | `providers` 端点完全派生自 `agentbook.providers` 注册表（key 变量名、是否已设、默认模型、requires_key） | 新增 provider 零改动出现在 GUI（与 CLI 的 `providers` 命令同源） | 硬编码清单 | 不回传任何 key 值，只回传布尔 |
 | D8 | 已知风险继承：`code_interpreter` 的 exec 沙箱可逃逸（工程分析问题 2，暂缓修复） | GUI 不改变威胁模型——仍是本地用户、自己的 key、自己的任务；与 CLI 暴露面一致 | 在 GUI 层单独禁用该工具（会造成 GUI/CLI 行为分叉，违背"全功能对齐"） | README 需提示：GUI 仅限本机使用 |
+| D9 | 单任务回传**逐轮实发上下文**（每轮请求的完整消息列表，逐消息截断 4000 字符、上限 20 轮） | 实验 1-1 的本体是"模型决策时看到了什么"——只回传 api_turns 计数会让 no_tool_results 的空观察、no_history 的消息裁剪、no_tool_calls 的无工具声明全部不可见，GUI 便无法展示模式间的真实差异（首版教训） | 只回传计数（首版做法，已被用户指出违背实验目的）；全量 api_turns（单条 tool result 可达整份 PDF 文本） | 消融套件仍不回传逐轮上下文——main.py 的 run_single_test 不保留轨迹对象，回传需改 main.py，违反零改动约束；模式差异的细查走单任务路径 |
 
 ## 5. 错误处理映射表（实现权威对照）
 

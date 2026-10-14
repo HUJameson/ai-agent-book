@@ -41,6 +41,12 @@ DEFAULT_PROVIDER = "doubao"
 # 结果字段截断上限：tool result 可能携带整份 PDF 文本，GUI 展示不需要全文
 _RESULT_SNIPPET_LIMIT = 4000
 
+# 单条消息在"每轮实发上下文"视图里的截断上限
+_MESSAGE_VIEW_LIMIT = 4000
+
+# 最多回传的推理轮数（防极端长循环把响应撑爆）
+_MAX_TURNS_VIEW = 20
+
 
 class MissingKeyError(RuntimeError):
     """provider 无法解析（key 缺失且无兜底），消息由注册表提供。"""
@@ -119,6 +125,61 @@ def json_loads(text: str):
     return json.loads(text)
 
 
+def _message_view(message: Dict[str, Any]) -> Dict[str, Any]:
+    """单条消息的可展示视图：截断内容，保留角色/工具调用/思考标记。"""
+    role = message.get("role")
+    content = message.get("content")
+    if isinstance(content, str):
+        text = content
+    elif content is not None:
+        text = json_dumps(content)
+    else:
+        text = ""
+    view: Dict[str, Any] = {"role": role, "content": None, "truncated": False}
+    if text:
+        if len(text) > _MESSAGE_VIEW_LIMIT:
+            view["content"] = text[:_MESSAGE_VIEW_LIMIT] + (
+                f"…（截断，共 {len(text)} 字符）"
+            )
+            view["truncated"] = True
+        else:
+            view["content"] = text
+    if role == "assistant" and message.get("tool_calls"):
+        view["tool_calls"] = [
+            {
+                "name": tc.get("function", {}).get("name"),
+                "arguments": tc.get("function", {}).get("arguments"),
+            }
+            for tc in message["tool_calls"]
+        ]
+    if role == "assistant" and message.get("reasoning_content"):
+        view["has_reasoning"] = True
+    return view
+
+
+def trajectory_view(
+    trajectory, max_turns: int = _MAX_TURNS_VIEW
+) -> List[Dict[str, Any]]:
+    """逐轮"实发上下文"视图（实验 1-1 的本体证据，见 DESIGN D9）。
+
+    每轮回传：该次请求实际发给模型的消息列表（截断版）与是否携带工具定义。
+    no_tool_results 的空 tool 消息、no_history 的消息裁剪、no_tool_calls 的
+    无工具声明，都在这里直接可见。
+    """
+    turns = []
+    for turn in trajectory.api_turns[:max_turns]:
+        request = turn.get("request") or {}
+        turns.append(
+            {
+                "iteration": turn.get("iteration"),
+                "model": request.get("model"),
+                "tools_included": bool(request.get("tools")),
+                "messages": [_message_view(m) for m in request.get("messages", [])],
+            }
+        )
+    return turns
+
+
 def _trim_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """消融结果的 GUI 裁剪视图（DESIGN 第 3 节）。"""
     trimmed = []
@@ -192,6 +253,8 @@ def run_single_task(
             ],
             "reasoning_steps_count": len(trajectory.reasoning_steps),
             "api_turns_count": len(trajectory.api_turns),
+            # 逐轮实发上下文：实验 1-1 的本体证据（DESIGN D9）
+            "api_turns": trajectory_view(trajectory),
         },
     }
 
