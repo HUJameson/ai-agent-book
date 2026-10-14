@@ -320,6 +320,22 @@ textarea {
   flex: none; font-size: 10px; color: var(--grad-b); align-self: center;
 }
 
+/* 助手消息的工具调用决策块 */
+.msg-toolcall {
+  border: 1px solid rgba(251, 146, 60, 0.4); border-radius: 8px;
+  background: rgba(251, 146, 60, 0.06); overflow: hidden;
+}
+.msg-toolcall .tc-name {
+  display: block; padding: 6px 10px; font-size: 11.5px; font-weight: 600;
+  color: #fdba74;
+}
+.msg-toolcall .tc-args {
+  margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  border-top: 1px solid rgba(251, 146, 60, 0.25);
+  color: #fcd9b6; white-space: pre-wrap; overflow-wrap: break-word;
+  max-height: 180px; overflow-y: auto;
+}
+
 /* ---------- 消融进度 ---------- */
 .progress-grid { display: grid; gap: 8px; margin: 8px 0 4px; }
 .pg-row { display: grid; gap: 8px; grid-template-columns: 170px 1fr; align-items: center; }

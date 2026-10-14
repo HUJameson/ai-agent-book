@@ -279,16 +279,31 @@ function renderContextTurns(entry) {
         pre.textContent = (m.content || "") + (m.truncated ? "\n…（已截断）" : "");
       }
       col.append(pre);
-      // 助手消息附带的工具调用与思考标记
-      const extra = [];
+      // 助手消息的工具调用决策：工具名 + 输入参数（DESIGN D10 展示层补全）
       if (m.tool_calls?.length) {
-        extra.push("🔧 " + m.tool_calls.map((t) => t.name).join(", "));
+        for (const tc of m.tool_calls) {
+          const tcDiv = document.createElement("div");
+          tcDiv.className = "msg-toolcall";
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "tc-name";
+          nameSpan.textContent = "🔧 决策：调用 " + (tc.name || "?");
+          tcDiv.append(nameSpan);
+          let argsText = tc.arguments || "{}";
+          try {
+            argsText = JSON.stringify(JSON.parse(argsText), null, 2);
+          } catch (e) { /* 模型输出的参数可能不是合法 JSON，原样展示 */ }
+          const argsPre = document.createElement("pre");
+          argsPre.className = "tc-args";
+          argsPre.textContent = argsText;
+          tcDiv.append(argsPre);
+          col.append(tcDiv);
+        }
       }
-      if (m.has_reasoning) extra.push("💭 含思考过程");
-      if (extra.length) {
+      // 思考标记
+      if (m.has_reasoning) {
         const tag = document.createElement("span");
         tag.className = "msg-extra";
-        tag.textContent = extra.join(" · ");
+        tag.textContent = "💭 含思考过程";
         col.append(tag);
       }
       row.append(role, col);
