@@ -246,6 +246,15 @@ function renderContextTurns(entry) {
 
     const body = document.createElement("div");
     body.className = "ctx-body";
+    // 响应侧：模型本轮刚产出的思考（DESIGN D10）
+    if (turn.response_reasoning) {
+      const turnReasoning = document.createElement("details");
+      turnReasoning.className = "turn-reasoning";
+      turnReasoning.innerHTML =
+        '<summary>💭 本轮模型思考</summary><pre></pre>';
+      turnReasoning.querySelector("pre").textContent = turn.response_reasoning;
+      body.append(turnReasoning);
+    }
     (turn.messages || []).forEach((m) => {
       const row = document.createElement("div");
       row.className = "msg-row";
@@ -253,6 +262,15 @@ function renderContextTurns(entry) {
       const role = document.createElement("span");
       role.className = `msg-role role-${m.role}`;
       role.textContent = ROLE_LABEL[m.role] || m.role;
+      const col = document.createElement("div");
+      col.className = "msg-col";
+      // 请求侧：回放进上下文的思考（no_reasoning 模式下不存在，DESIGN D10）
+      if (m.reasoning) {
+        const rpre = document.createElement("pre");
+        rpre.className = "msg-reasoning";
+        rpre.textContent = "💭 " + m.reasoning + (m.truncated ? "\n…（已截断）" : "");
+        col.append(rpre);
+      }
       const pre = document.createElement("pre");
       pre.className = "msg-content" + (isEmptyTool ? " msg-empty" : "");
       if (isEmptyTool) {
@@ -260,7 +278,7 @@ function renderContextTurns(entry) {
       } else {
         pre.textContent = (m.content || "") + (m.truncated ? "\n…（已截断）" : "");
       }
-      row.append(role, pre);
+      col.append(pre);
       // 助手消息附带的工具调用与思考标记
       const extra = [];
       if (m.tool_calls?.length) {
@@ -271,8 +289,9 @@ function renderContextTurns(entry) {
         const tag = document.createElement("span");
         tag.className = "msg-extra";
         tag.textContent = extra.join(" · ");
-        row.append(tag);
+        col.append(tag);
       }
+      row.append(role, col);
       body.append(row);
     });
     details.append(summary, body);

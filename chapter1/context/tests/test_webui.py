@@ -343,6 +343,7 @@ def test_trajectory_view_exposes_sent_messages():
                         {
                             "role": "assistant",
                             "content": "",
+                            "reasoning_content": "需要调用汇率工具。",
                             "tool_calls": [
                                 {
                                     "function": {
@@ -354,6 +355,16 @@ def test_trajectory_view_exposes_sent_messages():
                         },
                         {"role": "tool", "tool_call_id": "x", "content": ""},
                     ],
+                },
+                "response": {
+                    "choices": [
+                        {
+                            "message": {
+                                "reasoning_content": "用户要换算 1000 美元，先调工具。",
+                                "content": "",
+                            }
+                        }
+                    ]
                 },
             },
         ]
@@ -367,8 +378,31 @@ def test_trajectory_view_exposes_sent_messages():
     assert roles == ["system", "user", "assistant", "tool"]
     # 空 tool 消息必须原样暴露（no_tool_results 模式的铁证）
     assert turn["messages"][3]["content"] is None
-    # 助手消息附带工具调用与思考标记
-    assert turn["messages"][2]["tool_calls"][0]["name"] == "convert_currency"
+    # 请求侧：回放进上下文的思考内容（DESIGN D10）
+    assistant_msg = turn["messages"][2]
+    assert assistant_msg["reasoning"] == "需要调用汇率工具。"
+    assert assistant_msg["has_reasoning"] is True
+    assert assistant_msg["tool_calls"][0]["name"] == "convert_currency"
+    # 响应侧：本轮模型思考（DESIGN D10）
+    assert turn["response_reasoning"] == "用户要换算 1000 美元，先调工具。"
+
+
+def test_trajectory_view_response_reasoning_absent():
+    from webui.agent_runner import trajectory_view
+
+    trajectory = _FakeTrajectory(
+        [
+            {
+                "iteration": 1,
+                "request": {"messages": []},
+                "response": {"choices": [{"message": {"content": "hi"}}]},
+            },
+            {"iteration": 2, "request": {"messages": []}},
+        ]
+    )
+    view = trajectory_view(trajectory)
+    assert view[0]["response_reasoning"] is None  # 无思考内容 → None
+    assert view[1]["response_reasoning"] is None  # 无响应体 → None
 
 
 def test_trajectory_view_truncates_and_flags_reasoning():
@@ -396,6 +430,7 @@ def test_trajectory_view_truncates_and_flags_reasoning():
     assert msg["truncated"] is True
     assert len(msg["content"]) < _MESSAGE_VIEW_LIMIT + 100
     assert msg["has_reasoning"] is True
+    assert msg["reasoning"] == "thinking..."
 
 
 def test_trajectory_view_caps_turns():

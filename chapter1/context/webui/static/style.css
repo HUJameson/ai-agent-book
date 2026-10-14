@@ -269,7 +269,35 @@ textarea {
 .ctx-flag.ok { color: var(--ok); background: rgba(52, 211, 153, 0.1); }
 .ctx-flag.fail { color: var(--fail); background: rgba(248, 113, 113, 0.12); }
 .ctx-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+/* 响应侧"本轮思考"折叠块 */
+.turn-reasoning {
+  border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 8px;
+  background: rgba(167, 139, 250, 0.06);
+}
+.turn-reasoning > summary {
+  padding: 6px 10px; cursor: pointer; font-size: 11.5px; color: #c4b5fd;
+  list-style: none;
+}
+.turn-reasoning > summary::-webkit-details-marker { display: none; }
+.turn-reasoning > pre {
+  margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  color: #b7a8e8; white-space: pre-wrap; overflow-wrap: break-word;
+  max-height: 220px; overflow-y: auto;
+  border-top: 1px solid rgba(167, 139, 250, 0.2);
+}
+
 .msg-row { display: flex; gap: 8px; align-items: flex-start; }
+.msg-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* 请求侧回放的思考（assistant 消息内） */
+.msg-reasoning {
+  margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  border-radius: 8px; color: #b7a8e8; font-style: italic;
+  background: rgba(167, 139, 250, 0.07); border: 1px dashed rgba(167, 139, 250, 0.35);
+  white-space: pre-wrap; overflow-wrap: break-word;
+  max-height: 180px; overflow-y: auto;
+}
 .msg-role {
   flex: none; font-size: 10.5px; padding: 3px 9px; border-radius: 6px;
   margin-top: 2px; font-weight: 600;
@@ -279,7 +307,7 @@ textarea {
 .role-assistant { color: #86efac; background: rgba(74, 222, 128, 0.12); }
 .role-tool { color: #fdba74; background: rgba(251, 146, 60, 0.12); }
 .msg-content {
-  flex: 1; margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.6;
+  width: 100%; margin: 0; padding: 8px 10px; font-size: 11px; line-height: 1.6;
   border-radius: 8px; background: rgba(5, 7, 15, 0.55); border: 1px solid var(--border);
   white-space: pre-wrap; overflow-wrap: break-word; max-height: 220px; overflow-y: auto;
   color: #c9cede;

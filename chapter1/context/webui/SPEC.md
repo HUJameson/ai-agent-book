@@ -67,7 +67,7 @@ chapter1/context/webui/
 
 ## 6. 功能需求
 
-**F1 单任务问答**：任务输入框（Ctrl/⌘+Enter 提交）+ 5 个上下文模式**可视化卡片**（图标 + 名称 + 一句话说明，选中态高亮发光）+ 执行按钮动效；结果区分 `completed` / `error`；答案 Markdown 渲染；轨迹按**垂直时间轴**呈现（迭代节点脉冲动效，工具调用卡片显示名称/参数/结果，reasoning 折叠）；显示 iterations、tool_calls、grounding 判定徽章（`UNSUPPORTED` 红色警示）；提供**每轮实发上下文面板**——逐轮展开该次请求实际发给模型的消息列表（角色徽标着色，空 tool 消息红色标注"未回传"，助手消息标注工具调用与是否含思考，长内容截断可辨），使 full / no_tool_results / no_history / no_tool_calls 的模式差异直接可见。
+**F1 单任务问答**：任务输入框（Ctrl/⌘+Enter 提交）+ 5 个上下文模式**可视化卡片**（图标 + 名称 + 一句话说明，选中态高亮发光）+ 执行按钮动效；结果区分 `completed` / `error`；答案 Markdown 渲染；轨迹按**垂直时间轴**呈现（迭代节点脉冲动效，工具调用卡片显示名称/参数/结果，reasoning 折叠）；显示 iterations、tool_calls、grounding 判定徽章（`UNSUPPORTED` 红色警示）；提供**每轮实发上下文面板**——逐轮展开该次请求实际发给模型的消息列表（角色徽标着色，空 tool 消息红色标注"未回传"，助手消息标注工具调用与是否含思考，长内容截断可辨），使 full / no_tool_results / no_history / no_tool_calls 的模式差异直接可见。面板包含**思考内容**：请求侧回放的 reasoning_content（no_reasoning 模式下不可见，模式差异直接可辨）+ 响应侧的本轮模型思考折叠块。
 
 **F2 消融套件**：模式多选卡片（默认全选 5 种）+ 案例数选择（1-4，来自示例任务）+ provider 选择；启动后进入**进度视图**：模式×案例网格单元实时填充（运行中脉冲动画 → ✓/⚠/✗ 落定弹入）；完成后展示：对比矩阵表、Chart.js 柱状图组（iterations / tool_calls / 耗时 按模式对比，完成率）、grounding 统计；提供报告 `.md` 下载。
 

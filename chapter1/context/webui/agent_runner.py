@@ -44,6 +44,9 @@ _RESULT_SNIPPET_LIMIT = 4000
 # 单条消息在"每轮实发上下文"视图里的截断上限
 _MESSAGE_VIEW_LIMIT = 4000
 
+# 响应侧"本轮思考"的截断上限（DESIGN D10）
+_REASONING_VIEW_LIMIT = 2000
+
 # 最多回传的推理轮数（防极端长循环把响应撑爆）
 _MAX_TURNS_VIEW = 20
 
@@ -125,8 +128,19 @@ def json_loads(text: str):
     return json.loads(text)
 
 
+def _truncate(text: str, limit: int) -> tuple:
+    """截断并标记：(截断后文本, 是否发生截断)。"""
+    if len(text) > limit:
+        return text[:limit] + f"…（截断，共 {len(text)} 字符）", True
+    return text, False
+
+
 def _message_view(message: Dict[str, Any]) -> Dict[str, Any]:
-    """单条消息的可展示视图：截断内容，保留角色/工具调用/思考标记。"""
+    """单条消息的可展示视图：截断内容，保留角色/工具调用/思考标记。
+
+    assistant 消息的 reasoning_content 是被回放进上下文的"上一轮思考"，
+    no_reasoning 模式下该字段不存在——这是模式差异的直接证据（DESIGN D10）。
+    """
     role = message.get("role")
     content = message.get("content")
     if isinstance(content, str):
@@ -137,13 +151,7 @@ def _message_view(message: Dict[str, Any]) -> Dict[str, Any]:
         text = ""
     view: Dict[str, Any] = {"role": role, "content": None, "truncated": False}
     if text:
-        if len(text) > _MESSAGE_VIEW_LIMIT:
-            view["content"] = text[:_MESSAGE_VIEW_LIMIT] + (
-                f"…（截断，共 {len(text)} 字符）"
-            )
-            view["truncated"] = True
-        else:
-            view["content"] = text
+        view["content"], view["truncated"] = _truncate(text, _MESSAGE_VIEW_LIMIT)
     if role == "assistant" and message.get("tool_calls"):
         view["tool_calls"] = [
             {
@@ -154,7 +162,23 @@ def _message_view(message: Dict[str, Any]) -> Dict[str, Any]:
         ]
     if role == "assistant" and message.get("reasoning_content"):
         view["has_reasoning"] = True
+        reasoning = str(message["reasoning_content"])
+        view["reasoning"], truncated = _truncate(reasoning, _MESSAGE_VIEW_LIMIT)
+        view["truncated"] = view["truncated"] or truncated
     return view
+
+
+def _response_reasoning(turn: Dict[str, Any]) -> Optional[str]:
+    """提取响应侧"本轮模型思考"（api_turns.response 里的 reasoning_content）。"""
+    try:
+        message = turn["response"]["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    value = message.get("reasoning_content") if isinstance(message, dict) else None
+    if not value:
+        return None
+    text, _ = _truncate(str(value), _REASONING_VIEW_LIMIT)
+    return text
 
 
 def trajectory_view(
@@ -175,6 +199,8 @@ def trajectory_view(
                 "model": request.get("model"),
                 "tools_included": bool(request.get("tools")),
                 "messages": [_message_view(m) for m in request.get("messages", [])],
+                # 响应侧：模型本轮刚产出的思考（DESIGN D10）
+                "response_reasoning": _response_reasoning(turn),
             }
         )
     return turns

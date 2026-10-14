@@ -38,8 +38,10 @@
   "trajectory": {"tool_calls": [{"tool_name","arguments","result"}],
                  "reasoning_steps_count": 3, "api_turns_count": 4,
                  "api_turns": [{"iteration": 1, "model": "...", "tools_included": true,
-                                "messages": [{"role": "tool", "content": null,
-                                              "truncated": false}]}]},
+                                "response_reasoning": "本轮模型的思考（截断）",
+                                "messages": [{"role": "assistant",
+                                              "reasoning": "回放进上下文的思考（截断）",
+                                              "content": null, "truncated": false}]}]},
   "grounding": {"verdict": "grounded|ungrounded|...", "unsupported_quantities": []},
   "elapsed_seconds": 42.1, "status": "success | error", "error": null,  // ablation 专属
   "job_id": "job_...", "results_summary": [{"case_name","context_mode",
@@ -66,6 +68,7 @@
 | D7 | `providers` 端点完全派生自 `agentbook.providers` 注册表（key 变量名、是否已设、默认模型、requires_key） | 新增 provider 零改动出现在 GUI（与 CLI 的 `providers` 命令同源） | 硬编码清单 | 不回传任何 key 值，只回传布尔 |
 | D8 | 已知风险继承：`code_interpreter` 的 exec 沙箱可逃逸（工程分析问题 2，暂缓修复） | GUI 不改变威胁模型——仍是本地用户、自己的 key、自己的任务；与 CLI 暴露面一致 | 在 GUI 层单独禁用该工具（会造成 GUI/CLI 行为分叉，违背"全功能对齐"） | README 需提示：GUI 仅限本机使用 |
 | D9 | 单任务回传**逐轮实发上下文**（每轮请求的完整消息列表，逐消息截断 4000 字符、上限 20 轮） | 实验 1-1 的本体是"模型决策时看到了什么"——只回传 api_turns 计数会让 no_tool_results 的空观察、no_history 的消息裁剪、no_tool_calls 的无工具声明全部不可见，GUI 便无法展示模式间的真实差异（首版教训） | 只回传计数（首版做法，已被用户指出违背实验目的）；全量 api_turns（单条 tool result 可达整份 PDF 文本） | 消融套件仍不回传逐轮上下文——main.py 的 run_single_test 不保留轨迹对象，回传需改 main.py，违反零改动约束；模式差异的细查走单任务路径 |
+| D10 | 上下文视图包含**思考内容**，分请求侧与响应侧 | 思考在两处出现，含义不同：① assistant 消息回放进上下文的 `reasoning_content`——它是"模型这轮看到的上一轮思考"，no_reasoning 模式下该字段消失，模式差异直接可辨；② `api_turns.response` 里模型本轮刚产出的思考——完整阅读每轮推理过程的材料。只展示其一都会被问"思考在哪" | 只回放请求侧（第 1 轮无历史思考，面板仍空白）；依赖 trajectory.reasoning_steps 计数（无内容） | 两侧均截断（请求侧随消息 4000、响应侧 2000）；消融套件不回传思考（同 D9 边界） |
 
 ## 5. 错误处理映射表（实现权威对照）
 
