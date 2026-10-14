@@ -1,0 +1,3 @@
+# Web GUI 可选依赖（不进入主项目 requirements.txt，见 SPEC 第 8 节）
+fastapi>=0.110
+uvicorn>=0.29

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Ablation Agent</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+
+<header>
+  <h1 class="gradient-text">Context Ablation Agent</h1>
+  <p class="subtitle">实验 1-1 · 上下文消融 —— 拆开上下文的每个组件，看 Agent 会怎样</p>
+</header>
+
+<div class="layout">
+  <aside>
+    <section class="glass panel">
+      <h2>🔌 Provider</h2>
+      <label>提供商
+        <select id="opt-provider"></select>
+      </label>
+      <div id="provider-status" class="provider-status"></div>
+      <label>模型覆盖（留空用默认）
+        <input id="opt-model" type="text" placeholder="默认模型">
+      </label>
+    </section>
+
+    <section class="glass panel">
+      <h2>🕘 历史记录 <button id="clear-history" class="link-btn">清空</button></h2>
+      <ul id="history-list"></ul>
+    </section>
+  </aside>
+
+  <main>
+    <nav class="tabs">
+      <button class="tab active" data-tab="single">⚡ 单任务</button>
+      <button class="tab" data-tab="ablation">🧪 消融套件</button>
+    </nav>
+
+    <!-- ============ 单任务 ============ -->
+    <section id="tab-single" class="tab-page">
+      <div class="glass panel">
+        <h2>上下文模式</h2>
+        <div id="mode-cards" class="mode-cards"></div>
+      </div>
+      <div class="glass panel">
+        <h2>任务</h2>
+        <textarea id="task" rows="4"
+          placeholder="输入任务，例如：把 1000 美元换算成欧元、英镑、日元并计算平均值（Ctrl/⌘+Enter 执行）"></textarea>
+        <div id="sample-chips" class="sample-chips"></div>
+        <div class="ask-row">
+          <button id="run-btn" class="btn-gradient">⚡ 执行任务</button>
+          <span id="status-hint" class="hint-text"></span>
+        </div>
+      </div>
+      <div id="error-box" class="error-box hidden"></div>
+
+      <section id="result" class="hidden">
+        <div class="glass panel">
+          <div class="result-badges">
+            <span id="badge-mode" class="badge"></span>
+            <span id="badge-status" class="badge"></span>
+            <span id="badge-grounding" class="badge"></span>
+            <span id="badge-stats" class="badge badge-dim"></span>
+          </div>
+          <h2>📝 最终答案</h2>
+          <div id="answer" class="answer"></div>
+          <h2>🧵 执行轨迹</h2>
+          <div id="timeline" class="timeline"></div>
+          <p id="meta" class="meta"></p>
+        </div>
+      </section>
+    </section>
+
+    <!-- ============ 消融套件 ============ -->
+    <section id="tab-ablation" class="tab-page hidden">
+      <div class="glass panel">
+        <h2>消融配置</h2>
+        <div id="ablation-mode-cards" class="mode-cards"></div>
+        <div class="config-row">
+          <label>案例数（示例任务）
+            <select id="opt-num-cases">
+              <option value="1">1 · 跨国预算（默认案例）</option>
+              <option value="2">2 · 多案例对照</option>
+              <option value="3">3 · 多案例对照</option>
+              <option value="4">4 · 多案例对照</option>
+            </select>
+          </label>
+          <button id="ablation-btn" class="btn-gradient">🧪 启动消融</button>
+        </div>
+        <p class="hint-text">整轮运行可能需要 10-30 分钟，可随时离开页面，回来后从历史记录回看。</p>
+      </div>
+
+      <div id="ablation-error" class="error-box hidden"></div>
+
+      <div id="ablation-progress" class="glass panel hidden">
+        <h2>⏳ 进度 <span id="progress-text" class="hint-text"></span></h2>
+        <div id="progress-grid" class="progress-grid"></div>
+        <h2>📜 运行日志</h2>
+        <pre id="job-log" class="job-log"></pre>
+      </div>
+
+      <div id="ablation-results" class="hidden">
+        <div class="glass panel">
+          <h2>📊 模式 × 案例对比矩阵</h2>
+          <div id="matrix"></div>
+          <p class="legend">✓ 有终止响应 · ⚠ 终止但数字无观察支撑 · ✗ 无终止响应</p>
+          <div class="report-row">
+            <a id="report-link" class="btn-gradient btn-link" download>📄 下载 Markdown 报告</a>
+          </div>
+        </div>
+        <div class="glass panel">
+          <h2>📈 模式对比图表</h2>
+          <div class="charts">
+            <div class="chart-box"><canvas id="chart-iterations"></canvas></div>
+            <div class="chart-box"><canvas id="chart-toolcalls"></canvas></div>
+            <div class="chart-box"><canvas id="chart-time"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/static/chart.umd.min.js"></script>
+<script src="/static/marked.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
