@@ -17,6 +17,7 @@ import math
 from datetime import datetime
 
 from calc_sandbox import safe_eval
+from code_sandbox import safe_exec
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -285,78 +286,41 @@ class ToolRegistry:
     def code_interpreter(code: str) -> Dict[str, Any]:
         """
         Execute Python code for complex calculations and data processing
-        
+
         Args:
             code: Python code to execute
-            
+
         Returns:
             Dictionary with execution results and any output
+
+        The execution is guarded by a statement-level AST whitelist
+        (code_sandbox.safe_exec): attribute access outside `math.<attr>`,
+        imports, function/class definitions and comprehensions are rejected
+        before the interpreter runs. This closes the __class__/__globals__
+        escape that the previous bare-exec namespace sandbox allowed -- the
+        same reasoning calc_sandbox.py documents for the expression case.
         """
         try:
             logger.info(f"Executing Python code: {code[:100]}...")
-            
-            # Create a restricted namespace with safe built-ins
-            safe_namespace = {
-                '__builtins__': {
-                    'abs': abs,
-                    'all': all,
-                    'any': any,
-                    'sum': sum,
-                    'min': min,
-                    'max': max,
-                    'round': round,
-                    'len': len,
-                    'list': list,
-                    'dict': dict,
-                    'set': set,
-                    'tuple': tuple,
-                    'enumerate': enumerate,
-                    'zip': zip,
-                    'map': map,
-                    'filter': filter,
-                    'sorted': sorted,
-                    'reversed': reversed,
-                    'range': range,
-                    'int': int,
-                    'float': float,
-                    'str': str,
-                    'bool': bool,
-                    'print': print,
-                }
-            }
-            
-            # Add math module
-            safe_namespace['math'] = math
-            
-            # Capture printed output
-            import io
-            import contextlib
-            
-            output_buffer = io.StringIO()
-            
-            with contextlib.redirect_stdout(output_buffer):
-                # Execute the code
-                exec(code, safe_namespace)
-            
-            # Get printed output
-            printed_output = output_buffer.getvalue()
-            
+
+            namespace, printed_output = safe_exec(code)
+
             # Try to extract a result if it's assigned to 'result' variable
-            result = safe_namespace.get('result', None)
-            
+            result = namespace.get('result', None)
+
             # Also check for common variable names
             if result is None:
                 for var_name in ['total', 'sum', 'output', 'answer', 'final']:
-                    if var_name in safe_namespace:
-                        result = safe_namespace[var_name]
+                    if var_name in namespace:
+                        result = namespace[var_name]
                         break
-            
+
             # Get all variables defined (excluding built-ins and modules)
             variables = {
-                k: v for k, v in safe_namespace.items() 
+                k: v for k, v in namespace.items()
                 if not k.startswith('__') and k not in ['math'] and not callable(v)
             }
-            
+
             return {
                 "code": code,
                 "result": result,
@@ -364,7 +328,7 @@ class ToolRegistry:
                 "variables": variables,
                 "success": True
             }
-            
+
         except Exception as e:
             logger.error(f"Error executing code: {str(e)}")
             return {

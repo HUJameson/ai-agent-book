@@ -66,7 +66,7 @@
 | D5 | 无 mock：执行前 `resolve_backend` 预检，失败返回 400 并**指名缺失的环境变量** | 与 CLI 行为一致（用户明确选择）；注册表的报错信息已足够精确 | 回放样板轨迹 | 无 key 时 UI 仍可浏览（providers/samples 可拉取），仅执行被拒 |
 | D6 | 视觉系统：CSS design tokens + 玻璃拟态 + Chart.js 暗色预设；动效仅 CSS（渐变位移/悬停浮起/脉冲/弹入），零 JS 动画库 | "炫酷"约束下的最小技术面；Chart.js 单文件 vendor 保离线 | 粒子背景（用户已否）；Tailwind/构建链（违反零构建） | 需维护一份 ~40 行 token 清单；Chart.js v4 约 200KB |
 | D7 | `providers` 端点完全派生自 `agentbook.providers` 注册表（key 变量名、是否已设、默认模型、requires_key） | 新增 provider 零改动出现在 GUI（与 CLI 的 `providers` 命令同源） | 硬编码清单 | 不回传任何 key 值，只回传布尔 |
-| D8 | 已知风险继承：`code_interpreter` 的 exec 沙箱可逃逸（工程分析问题 2，暂缓修复） | GUI 不改变威胁模型——仍是本地用户、自己的 key、自己的任务；与 CLI 暴露面一致 | 在 GUI 层单独禁用该工具（会造成 GUI/CLI 行为分叉，违背"全功能对齐"） | README 需提示：GUI 仅限本机使用 |
+| D8 | **已修复**（2026-10-14 修订，原决策"已知风险继承、暂缓修复"作废）：`code_interpreter` 改走 `code_sandbox.py` 语句级 AST 白名单 | 原风险与 CLI 相同（本地用户、自己的 key），但用户决定不再继承：exec 命名空间沙箱可被 `().__class__.__mro__` 链逃逸（已实测），GUI 使触发面变大；修复与 `calc_sandbox.py` 同哲学——语法树层拒绝 `ast.Attribute`（唯一例外 `math.<attr>`）、Import/FunctionDef/Lambda/Comprehension 等，逃逸链第一环即失败 | 命名空间沙箱修补（原理上不可靠，calc_sandbox.py 文档已论证）；子进程隔离（跨平台过重）；删除该工具（丧失多步聚合能力） | 模型生成的代码若用受限语法（如 `result.total` 属性访问、列表推导式）将收到明确报错而非静默执行；无限循环风险与修复前相同（无超时），见 webui/README |
 | D9 | 单任务回传**逐轮实发上下文**（每轮请求的完整消息列表，逐消息截断 4000 字符、上限 20 轮） | 实验 1-1 的本体是"模型决策时看到了什么"——只回传 api_turns 计数会让 no_tool_results 的空观察、no_history 的消息裁剪、no_tool_calls 的无工具声明全部不可见，GUI 便无法展示模式间的真实差异（首版教训） | 只回传计数（首版做法，已被用户指出违背实验目的）；全量 api_turns（单条 tool result 可达整份 PDF 文本） | 消融套件仍不回传逐轮上下文——main.py 的 run_single_test 不保留轨迹对象，回传需改 main.py，违反零改动约束；模式差异的细查走单任务路径 |
 | D10 | 上下文视图包含**思考内容**，分请求侧与响应侧 | 思考在两处出现，含义不同：① assistant 消息回放进上下文的 `reasoning_content`——它是"模型这轮看到的上一轮思考"，no_reasoning 模式下该字段消失，模式差异直接可辨；② `api_turns.response` 里模型本轮刚产出的思考——完整阅读每轮推理过程的材料。只展示其一都会被问"思考在哪" | 只回放请求侧（第 1 轮无历史思考，面板仍空白）；依赖 trajectory.reasoning_steps 计数（无内容） | 两侧均截断（请求侧随消息 4000、响应侧 2000）；消融套件不回传思考（同 D9 边界） |
 
@@ -90,7 +90,22 @@
 
 **轮询**：只读 JobStore 快照（浅拷贝 results），无锁竞争。
 
+## 6.5 code_sandbox 修复设计（D8 配套，2026-10-14）
+
+新增 `chapter1/context/code_sandbox.py`，`agent.ToolRegistry.code_interpreter` 改为调用其 `safe_exec(code)`：
+
+1. `ast.parse(code, mode="exec")` 后递归校验每个节点；
+2. **语句白名单**：`Assign / AugAssign / AnnAssign / Expr / For / While / If / Break / Continue / Pass`；
+3. **表达式白名单**：`BinOp / UnaryOp / BoolOp / Compare / Call / Name / Constant / List / Tuple / Dict / Subscript / Slice / JoinedStr / FormattedValue / IfExp`；
+4. **Attribute 例外规则**：仅当 `value` 是 `Name(id="math")` 时放行（`math.sin(x)` 合法），其余一律 `UnsafeCode`——这一条使 `().__class__` 逃逸链第一环即失败；
+5. **Call 规则**：仅白名单名字可调用（与既有 builtins 白名单一致）；
+6. `Import / ImportFrom / Lambda / FunctionDef / ClassDef / ListComp / SetComp / DictComp / GeneratorExp / Try / With / Starred / Global / Nonlocal` 一律拒绝；
+7. 校验通过后 `compile` 执行，命名空间、stdout 捕获与结果提取沿用现有逻辑（`agent.py` 不再自带受限 namespace 构造）。
+
+验收锚点：`().__class__.__mro__[1].__subclasses__()` 链必须抛 `UnsafeCode`；工具描述中的示例代码必须原样可运行；新增 `tests/test_code_sandbox.py` 覆盖两类用例。
+
 ## 7. 测试策略
+
 
 - TestClient 不触网：providers/samples/defaults 契约；单任务 monkeypatch `agent_runner.run_single_task`（参数透传 + status 映射 + grounding 字段）；job 生命周期用 fake 套件（毫秒级、2 案例断言进度 done/total 递增、报告端点返回 MD 文本）；409 并发拒绝；404 轮询；历史 FIFO。
 - 既有 52 测试零回归 + CLI 行为不变为硬门槛。
