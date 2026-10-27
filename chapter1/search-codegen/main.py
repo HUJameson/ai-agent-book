@@ -24,6 +24,7 @@ class InteractiveCLI:
     
     def __init__(self, backend: str = None, model: str = None):
         """Initialize the CLI"""
+        backend = backend if backend is not None else Config.BACKEND
         if not Config.validate(backend):
             raise ValueError("Invalid configuration. Please check your .env file")
         api_key, base_url, resolved_model = Config.resolve(backend, model)
@@ -31,8 +32,9 @@ class InteractiveCLI:
             api_key=api_key,
             base_url=base_url,
             model=resolved_model,
+            backend=backend,
         )
-        self.backend = backend or Config.BACKEND
+        self.backend = backend
         
         self.commands = {
             "/help": self.show_help,
@@ -280,6 +282,7 @@ def _run_single(args):
         api_key=api_key,
         base_url=base_url,
         model=model,
+        backend=args.backend,
     )
 
     result = agent.process_request(

@@ -215,7 +215,7 @@ def run_backend(backend: str, reasoning: str) -> Dict[str, Any]:
     if not key:
         return {"backend": backend, "started": False, "error": "credential_missing"}
 
-    asean_agent = GPT5NativeAgent(key, base_url=base_url, model=model)
+    asean_agent = GPT5NativeAgent(key, base_url=base_url, model=model, backend=backend)
     asean = asean_agent.process_request(
         ASEAN_TASK,
         reasoning_effort=reasoning,
@@ -223,7 +223,7 @@ def run_backend(backend: str, reasoning: str) -> Dict[str, Any]:
         max_tokens=16000,
     )
 
-    clarification_agent = GPT5NativeAgent(key, base_url=base_url, model=model)
+    clarification_agent = GPT5NativeAgent(key, base_url=base_url, model=model, backend=backend)
     first = clarification_agent.process_request(
         AMBIGUOUS_TASK,
         reasoning_effort="medium",

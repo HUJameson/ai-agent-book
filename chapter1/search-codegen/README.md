@@ -295,3 +295,14 @@ usage, reported provider cost when available, and credential-free raw evidence.
 - [Code Interpreter](https://developers.openai.com/api/docs/guides/tools-code-interpreter)
 - [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/model-guidance?model=gpt-5.6-sol)
 - [Alibaba Model Studio code interpreter (DashScope)](https://help.aliyun.com/zh/model-studio/qwen-code-interpreter)
+
+## 显式后端与业务空间专属域名
+
+`--backend`（未指定时取 `BACKEND`，默认 `openai`）决定请求协议与工具参数；Base URL 决定实际访问地址。百炼共享域名和业务空间专属域名均可配合 `--backend dashscope` 使用：
+
+```dotenv
+BACKEND=dashscope
+DASHSCOPE_BASE_URL=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+```
+
+请替换业务空间 ID，并使用同地域、对应业务空间的 Key。程序化调用请显式传入 `GPT5NativeAgent(key, base_url=url, model=model, backend="dashscope")`。只有未传 backend 的旧调用才按 URL 推断；专属域名在旧推断中仍为 custom。非法 backend 会立即报错。百炼分支启用流式请求，但终端仍在任务结束后统一显示结果；流式不保证消除所有超时。

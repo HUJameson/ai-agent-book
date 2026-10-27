@@ -38,7 +38,8 @@ class TestGPT5Agent:
         self.agent = GPT5NativeAgent(
             api_key=Config.OPENROUTER_API_KEY,
             base_url=Config.OPENROUTER_BASE_URL,
-            model=Config.MODEL_NAME
+            model=Config.MODEL_NAME,
+            backend="openrouter",
         )
         self.results = []
     

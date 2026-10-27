@@ -33,7 +33,7 @@ def test_dashscope_request_uses_hosted_tool_shapes_and_streaming():
         "task", reasoning_effort="high", verbosity="high"
     )
     # DashScope runs thinking natively: no reasoning.effort or text.verbosity,
-    # and streaming is mandatory because its gateway drops idle connections.
+    # and streaming avoids long silent reads.
     assert "reasoning" not in request
     assert "text" not in request
     assert request["stream"] is True
@@ -45,7 +45,7 @@ def test_dashscope_request_uses_hosted_tool_shapes_and_streaming():
 
 def test_config_resolves_dashscope_backend():
     key, base_url, model = Config.resolve("dashscope")
-    assert base_url == DASHSCOPE_URL
+    assert base_url == Config.DASHSCOPE_BASE_URL
     assert model == Config.DASHSCOPE_MODEL
     assert isinstance(key, str)
 
