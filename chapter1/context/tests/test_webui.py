@@ -468,3 +468,36 @@ def test_clear_history_and_404(client, monkeypatch, ready):
     assert client.delete("/api/history").json() == {"cleared": True}
     assert client.get(f"/api/history/{entry['id']}").status_code == 404
     assert client.get("/api/history").json() == []
+
+
+def test_trajectory_tools_preserve_full_schema_and_snapshot():
+    from copy import deepcopy
+    from webui.agent_runner import trajectory_view
+
+    tools = [{"type": "function", "function": {
+        "name": "convert", "description": "<script>alert(1)</script>" + "长" * 5000,
+        "parameters": {"type": "object", "required": ["target"], "properties": {
+            "target": {"type": "string", "enum": ["EUR", "JPY"]},
+            "options": {"type": "object", "properties": {"round": {"type": "boolean"}}}
+        }}, "strict": True
+    }}]
+    turns = [{"iteration": 1, "request": {"tools": tools, "messages": []}},
+             {"iteration": 2, "request": {"tools": tools[:0], "messages": []}}]
+    before = deepcopy(turns)
+    view = trajectory_view(_FakeTrajectory(turns))
+    assert turns == before
+    assert view[0]["tools"] == tools
+    assert view[0]["tools_included"] is True
+    assert view[1]["tools"] == []
+    assert view[1]["tools_included"] is False
+    view[0]["tools"][0]["function"]["parameters"]["required"].append("amount")
+    assert turns == before
+
+
+@pytest.mark.parametrize("sent_request", [{}, {"tools": None}, {"tools": []}])
+def test_trajectory_without_tools(sent_request):
+    from webui.agent_runner import trajectory_view
+
+    turn = trajectory_view(_FakeTrajectory([{"request": sent_request}]))[0]
+    assert turn["tools"] == []
+    assert turn["tools_included"] is False

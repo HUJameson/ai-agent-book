@@ -234,9 +234,12 @@ function renderContextTurns(entry) {
     details.className = "ctx-turn";
     if (idx === turns.length - 1) details.open = true;
 
-    const toolFlag = turn.tools_included
+    const hasTools = Array.isArray(turn.tools) ? turn.tools.length > 0 : turn.tools_included;
+    const toolFlag = hasTools
       ? '<span class="ctx-flag ok">工具定义 ✓</span>'
-      : '<span class="ctx-flag fail">无工具定义</span>';
+      : hasTools === false
+        ? '<span class="ctx-flag fail">无工具定义</span>'
+        : '<span class="ctx-flag">工具定义状态未知</span>';
     const summary = document.createElement("summary");
     summary.className = "tl-head";
     summary.innerHTML =
@@ -246,15 +249,26 @@ function renderContextTurns(entry) {
 
     const body = document.createElement("div");
     body.className = "ctx-body";
-    // 响应侧：模型本轮刚产出的思考（DESIGN D10）
-    if (turn.response_reasoning) {
-      const turnReasoning = document.createElement("details");
-      turnReasoning.className = "turn-reasoning";
-      turnReasoning.innerHTML =
-        '<summary>💭 本轮模型思考</summary><pre></pre>';
-      turnReasoning.querySelector("pre").textContent = turn.response_reasoning;
-      body.append(turnReasoning);
+    const toolDefinitions = document.createElement("details");
+    toolDefinitions.className = "tool-definitions";
+    const toolsSummary = document.createElement("summary");
+    const tools = Array.isArray(turn.tools) ? turn.tools : null;
+    toolsSummary.textContent = tools?.length
+      ? `工具定义（${tools.length} 个）· 点击展开查看完整定义`
+      : tools || turn.tools_included === false
+        ? "本轮未发送工具定义"
+        : turn.tools_included === true
+          ? "该记录未保存工具定义内容"
+          : "该记录未保存工具定义状态";
+    const toolsNote = document.createElement("p");
+    toolsNote.textContent = "工具定义通过独立 tools 字段发送，不属于系统提示词。";
+    toolDefinitions.append(toolsSummary, toolsNote);
+    if (tools?.length) {
+      const toolsPre = document.createElement("pre");
+      toolsPre.textContent = JSON.stringify(tools, null, 2);
+      toolDefinitions.append(toolsPre);
     }
+    body.append(toolDefinitions);
     (turn.messages || []).forEach((m) => {
       const row = document.createElement("div");
       row.className = "msg-row";
@@ -309,6 +323,15 @@ function renderContextTurns(entry) {
       row.append(role, col);
       body.append(row);
     });
+    // 响应侧：模型本轮刚产出的思考（DESIGN D10）
+    if (turn.response_reasoning) {
+      const turnReasoning = document.createElement("details");
+      turnReasoning.className = "turn-reasoning";
+      turnReasoning.innerHTML =
+        '<summary>💭 本轮模型思考</summary><pre></pre>';
+      turnReasoning.querySelector("pre").textContent = turn.response_reasoning;
+      body.append(turnReasoning);
+    }
     details.append(summary, body);
     box.append(details);
   });
