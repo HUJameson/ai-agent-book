@@ -385,3 +385,16 @@ textarea {
 }
 
 .hidden { display: none !important; }
+
+/* 每轮实发 tools 参数：完整 JSON，默认折叠并在区块内滚动 */
+.tool-definitions {
+  min-width: 0; border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 8px; background: rgba(52, 211, 153, 0.04);
+}
+.tool-definitions > summary { padding: 8px 10px; cursor: pointer; color: var(--ok); }
+.tool-definitions > p { margin: 0; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.tool-definitions > pre {
+  margin: 0; padding: 10px; max-height: 360px; max-width: 100%;
+  overflow: auto; white-space: pre; font-size: 12px; line-height: 1.6;
+  border-top: 1px solid rgba(52, 211, 153, 0.2);
+}

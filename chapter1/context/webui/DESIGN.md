@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.1（2026-10-13） |
+| 版本 | v0.2（2026-10-27，D11 已确认） |
 | 关联文档 | [SPEC.md](SPEC.md)（需求与验收）· [../../web-search-agent/webui/DESIGN.md](../../web-search-agent/webui/DESIGN.md)（姊妹工程模式） |
 | 维护约定 | 改设计 → 先改本文 → 再改代码 → 测试守护；<150 行红线 |
 
@@ -38,6 +38,7 @@
   "trajectory": {"tool_calls": [{"tool_name","arguments","result"}],
                  "reasoning_steps_count": 3, "api_turns_count": 4,
                  "api_turns": [{"iteration": 1, "model": "...", "tools_included": true,
+                                "tools": [{"type": "function", "function": {"name": "...", "description": "...", "parameters": {}}}],
                                 "response_reasoning": "本轮模型的思考（截断）",
                                 "messages": [{"role": "assistant",
                                               "reasoning": "回放进上下文的思考（截断）",
@@ -53,7 +54,7 @@
 ```
 
 - `results_summary` 是 `AblationTestSuite` 原始 results 的**裁剪视图**（剔除 final_answer_preview/reasoning 等大字段；完整字段经 `/api/report/{job_id}` 的 MD 报告承载）。
-- 轨迹不落完整 `api_turns`（体量大）；只回传计数。与 CLI 的 `task_result_*.json` 全量落盘互补，不重复。
+- 单任务 `api_turns` 回传 D9/D10 的裁剪视图；D11 增加每轮完整 `tools` 数组（不含请求鉴权、环境配置或其他请求字段）。消融套件仍只保留计数/摘要。
 
 ## 4. 关键设计决策（ADR）
 
@@ -69,6 +70,15 @@
 | D8 | **已修复**（2026-10-14 修订，原决策"已知风险继承、暂缓修复"作废）：`code_interpreter` 改走 `code_sandbox.py` 语句级 AST 白名单 | 原风险与 CLI 相同（本地用户、自己的 key），但用户决定不再继承：exec 命名空间沙箱可被 `().__class__.__mro__` 链逃逸（已实测），GUI 使触发面变大；修复与 `calc_sandbox.py` 同哲学——语法树层拒绝 `ast.Attribute`（唯一例外 `math.<attr>`）、Import/FunctionDef/Lambda/Comprehension 等，逃逸链第一环即失败 | 命名空间沙箱修补（原理上不可靠，calc_sandbox.py 文档已论证）；子进程隔离（跨平台过重）；删除该工具（丧失多步聚合能力） | 模型生成的代码若用受限语法（如 `result.total` 属性访问、列表推导式）将收到明确报错而非静默执行；无限循环风险与修复前相同（无超时），见 webui/README |
 | D9 | 单任务回传**逐轮实发上下文**（每轮请求的完整消息列表，逐消息截断 4000 字符、上限 20 轮） | 实验 1-1 的本体是"模型决策时看到了什么"——只回传 api_turns 计数会让 no_tool_results 的空观察、no_history 的消息裁剪、no_tool_calls 的无工具声明全部不可见，GUI 便无法展示模式间的真实差异（首版教训） | 只回传计数（首版做法，已被用户指出违背实验目的）；全量 api_turns（单条 tool result 可达整份 PDF 文本） | 消融套件仍不回传逐轮上下文——main.py 的 run_single_test 不保留轨迹对象，回传需改 main.py，违反零改动约束；模式差异的细查走单任务路径 |
 | D10 | 上下文视图包含**思考内容**，分请求侧与响应侧 | 思考在两处出现，含义不同：① assistant 消息回放进上下文的 `reasoning_content`——它是"模型这轮看到的上一轮思考"，no_reasoning 模式下该字段消失，模式差异直接可辨；② `api_turns.response` 里模型本轮刚产出的思考——完整阅读每轮推理过程的材料。只展示其一都会被问"思考在哪" | 只回放请求侧（第 1 轮无历史思考，面板仍空白）；依赖 trajectory.reasoning_steps 计数（无内容） | 两侧均截断（请求侧随消息 4000、响应侧 2000）；消融套件不回传思考（同 D9 边界） |
+| D11 | **已确认（2026-10-27）**：每轮独立展示实发 `request.tools`，默认折叠，保留完整 JSON | 工具定义是 API 独立参数，不在 system 消息内；仅有布尔徽章不足以说明模型可用的工具及参数约束 | 拼入系统提示词（改变实验输入）；读取当前注册表（不能证明当轮实发内容）；沿用消息截断（破坏 Schema） | 只改 GUI 对接层与展示层；保持 agent、调用行为、消息数与消融套件边界不变 |
+
+### D11 实现约定（已确认）
+
+- `trajectory_view` 从每轮 `request` 取 `tools`，生成独立 JSON 快照，保留数组次序和所有字段；不调用 `_get_tools_description()` 重建，不合并不同轮次。新增记录无工具时返回 `tools: []`；`tools_included` 保持兼容，按实际数组是否非空计算。
+- 每轮按“工具定义 → 消息列表 → 本轮模型思考”依次 append；`response_reasoning` 折叠块放在全部消息之后，历史思考仍在消息内部。前端在每轮消息前增加 `<details>`：“工具定义（N 个）”，说明其为独立 `tools` 字段；`<pre>` 通过 `textContent = JSON.stringify(tools, null, 2)` 渲染，禁止 `innerHTML`/Markdown 解释描述。区块限制高度，超长行与内容允许滚动，不截断定义。
+- 展示状态：非空数组 → 可展开定义；空数组 → “本轮未发送工具定义”；字段缺失且 `tools_included=true` → “该记录未保存工具定义内容”；字段缺失且徽章为 false → 未发送；两字段均缺失 → “该记录未保存工具定义状态”。旧记录不迁移、不补造。消息数只取 `messages.length`。
+- 单任务返回和 HistoryStore 复用同一轨迹视图，保持新执行与历史回看一致；不新增端点，不修改系统消息，不额外发起模型请求。定义完整保留带来响应体增长，以现有 20 轮上限与默认折叠控制展示规模。
+- 验证：离线构造多轮不同工具、含 required/enum/嵌套 Schema 和超 4000 字符描述的请求，断言输出与源定义一致且不修改源数据；覆盖无工具和旧记录兼容；浏览器检查折叠、滚动、历史回看及 HTML 描述按文本显示。运行现有 Web UI 测试确认契约兼容。
 
 ## 5. 错误处理映射表（实现权威对照）
 
