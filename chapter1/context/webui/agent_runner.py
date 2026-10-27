@@ -8,7 +8,6 @@ import os
 import sys
 import threading
 import time
-from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -37,7 +36,7 @@ except ImportError:  # 从仓库根目录等位置启动时的兜底
 HISTORY_LIMIT = 50
 
 CONTEXT_MODES = [mode.value for mode in ContextMode]
-DEFAULT_PROVIDER = "kimi"
+DEFAULT_PROVIDER = "doubao"
 
 # 结果字段截断上限：tool result 可能携带整份 PDF 文本，GUI 展示不需要全文
 _RESULT_SNIPPET_LIMIT = 4000
@@ -187,7 +186,7 @@ def trajectory_view(
 ) -> List[Dict[str, Any]]:
     """逐轮"实发上下文"视图（实验 1-1 的本体证据，见 DESIGN D9）。
 
-    每轮回传：该次请求实际发给模型的消息列表（截断版）与完整工具定义。
+    每轮回传：该次请求实际发给模型的消息列表（截断版）与是否携带工具定义。
     no_tool_results 的空 tool 消息、no_history 的消息裁剪、no_tool_calls 的
     无工具声明，都在这里直接可见。
     """
@@ -199,7 +198,6 @@ def trajectory_view(
                 "iteration": turn.get("iteration"),
                 "model": request.get("model"),
                 "tools_included": bool(request.get("tools")),
-                "tools": deepcopy(request.get("tools") or []),
                 "messages": [_message_view(m) for m in request.get("messages", [])],
                 # 响应侧：模型本轮刚产出的思考（DESIGN D10）
                 "response_reasoning": _response_reasoning(turn),
