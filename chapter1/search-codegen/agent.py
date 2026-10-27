@@ -26,13 +26,16 @@ class GPT5NativeAgent:
         api_key: str,
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-5.6-sol",
+        backend: Optional[str] = None,
     ):
         if not api_key:
             raise ValueError("An API key is required")
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
-        self.provider = (
+        if backend is not None and backend not in {"openai", "openrouter", "dashscope"}:
+            raise ValueError("backend must be openai, openrouter, or dashscope")
+        self.provider = backend if backend is not None else (
             "openai" if self.base_url == "https://api.openai.com/v1" else
             "openrouter" if "openrouter.ai" in self.base_url else
             "dashscope" if "dashscope" in self.base_url else
@@ -98,8 +101,7 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
         }
         if self.provider == "dashscope":
             # DashScope runs thinking natively and has no reasoning.effort or
-            # text.verbosity knobs; its gateway also drops non-streaming
-            # requests that stay silent for ~60s, so streaming is mandatory.
+            # text.verbosity knobs. Use streaming to avoid long silent reads.
             request["stream"] = True
         else:
             request["reasoning"] = {"effort": reasoning_effort}

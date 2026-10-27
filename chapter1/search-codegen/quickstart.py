@@ -17,7 +17,8 @@ def demo_web_search():
     
     agent = GPT5NativeAgent(
         api_key=Config.OPENROUTER_API_KEY,
-        base_url=Config.OPENROUTER_BASE_URL
+        base_url=Config.OPENROUTER_BASE_URL,
+        backend="openrouter",
     )
     
     result = agent.process_request(
@@ -42,7 +43,8 @@ def demo_code_interpreter():
     
     agent = GPT5NativeAgent(
         api_key=Config.OPENROUTER_API_KEY,
-        base_url=Config.OPENROUTER_BASE_URL
+        base_url=Config.OPENROUTER_BASE_URL,
+        backend="openrouter",
     )
     
     result = agent.process_request(
@@ -71,7 +73,8 @@ def demo_combined_tools():
     
     agent = GPT5NativeAgent(
         api_key=Config.OPENROUTER_API_KEY,
-        base_url=Config.OPENROUTER_BASE_URL
+        base_url=Config.OPENROUTER_BASE_URL,
+        backend="openrouter",
     )
     
     result = agent.search_and_analyze(

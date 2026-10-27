@@ -11,6 +11,7 @@ ROOT = Path(__file__).parent
 
 def _import_config_with(value: str | None) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
+    env["PYTHON_DOTENV_DISABLED"] = "1"
     if value is None:
         env.pop("DEFAULT_MAX_TOKENS", None)
     else:
