@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>搜索与代码计算 · Agent Lab</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="/static/vendor/marked.min.js"></script>
+    <script defer src="/static/vendor/purify.min.js"></script>
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <aside id="sidebar">
+        <a class="brand" href="/"
+          >◈ <span>AGENT LAB<small>实验 1-3 · SEARCH + CODE</small></span></a
+        ><button id="newSession" class="primary">＋ 新建会话</button>
+        <button
+          id="toggleSidebar"
+          class="quiet"
+          aria-expanded="false"
+          aria-controls="history"
+        >
+          展开历史
+        </button>
+        <div class="aside-heading">
+          运行与历史
+          <button id="refreshHistory" class="icon" title="刷新历史">↻</button>
+        </div>
+        <nav id="history" aria-label="会话历史"></nav>
+        <button id="clearHistory" class="quiet">清空已结束记录</button>
+        <p class="aside-note">
+          仅在本机运行 · 历史保存在内存<br />重启服务后清空，最多保留 50 条
+        </p>
+      </aside>
+      <main>
+        <header>
+          <div class="eyebrow">HOSTED TOOLS / EXPERIMENT 1-3</div>
+          <h1>让搜索找到事实，<br /><span>让代码完成计算。</span></h1>
+          <p class="subtitle">看见实际请求、工具执行和结果证据。</p>
+          <span class="local">● LOCAL WORKSPACE</span>
+        </header>
+        <section class="card settings">
+          <div class="section-title">
+            <h2>执行配置</h2>
+            <span id="configMode" class="badge">新会话</span>
+          </div>
+          <div class="settings-grid">
+            <label>模型后端<select id="backend"></select></label
+            ><label
+              >模型覆盖<input
+                id="model"
+                placeholder="使用后端默认模型"
+                maxlength="200" /></label
+            ><label
+              >推理力度<select id="reasoning">
+                <option>none</option>
+                <option selected>low</option>
+                <option>medium</option>
+                <option>high</option>
+                <option>xhigh</option>
+                <option>max</option>
+              </select></label
+            ><label
+              >输出详略<select id="verbosity">
+                <option value="">后端默认</option>
+                <option>low</option>
+                <option>medium</option>
+                <option>high</option>
+              </select></label
+            ><label
+              >最大输出 Token<input
+                id="maxTokens"
+                type="number"
+                min="1"
+                max="100000"
+                placeholder="服务端默认" /></label
+            ><label class="toggle"
+              ><input id="useTools" type="checkbox" checked />启用搜索 + Python
+              工具</label
+            >
+          </div>
+          <p id="backendInfo" class="muted"></p>
+          <p id="capabilityNote" class="muted"></p>
+          <p class="muted tiny">
+            密钥和 Base URL 在服务端配置；“已配置”不代表鉴权验证成功。修改 .env
+            后需重启。
+          </p>
+        </section>
+        <div class="tabs" role="tablist">
+          <button data-tab="chat" class="active" role="tab">任务对话</button
+          ><button data-tab="preview" role="tab">请求预览</button
+          ><button data-tab="experiment" role="tab">实验验证</button>
+        </div>
+        <div id="notice" role="alert" hidden></div>
+        <section id="jobPanel" class="card job" hidden>
+          <div>
+            <span class="spinner"></span
+            ><strong id="jobTitle">任务执行中</strong><span id="elapsed"></span>
+          </div>
+          <p id="jobMessage" class="muted"></p>
+        </section>
+        <section id="chatPane" class="pane">
+          <div id="conversation"></div>
+          <section class="card composer">
+            <div class="section-title">
+              <h2>研究任务</h2>
+              <span class="muted tiny">⌘ / Ctrl + Enter 运行</span>
+            </div>
+            <div id="samples" class="samples"></div>
+            <label for="task" class="sr-only">任务内容</label
+            ><textarea
+              id="task"
+              maxlength="20000"
+              placeholder="输入一个需要查证与计算的问题，或接着回答模型的澄清问题…"
+            ></textarea>
+            <div class="composer-foot">
+              <span class="muted tiny"
+                >联网任务可能持续数分钟；关闭页面不会取消调用。</span
+              ><button id="run" class="primary">运行任务 ↗</button>
+            </div>
+          </section>
+        </section>
+        <section id="previewPane" class="pane" hidden>
+          <section class="card">
+            <h2>查看实际请求</h2>
+            <p class="muted">
+              无需 Key、不联网、不修改会话。已有会话时预览下一轮增量请求。
+            </p>
+            <label for="previewTask">任务内容（与对话输入同步）</label
+            ><textarea
+              id="previewTask"
+              maxlength="20000"
+              placeholder="输入需要预览的任务…"
+            ></textarea
+            ><button id="previewRun" class="secondary">生成请求预览</button>
+            <div id="previewOutput"></div>
+          </section>
+        </section>
+        <section id="experimentPane" class="pane" hidden>
+          <section class="card">
+            <h2>实验 1-3 · 证据验证</h2>
+            <p class="muted">
+              验证教材十国首都距离，以及先澄清再续接的比特币分析。将对每个所选后端发起多次真实
+              API 调用。
+            </p>
+            <div id="experimentBackends" class="samples"></div>
+            <p class="muted tiny">
+              实验使用各后端默认模型与固定任务，不使用会话中的模型覆盖。OpenRouter
+              仅作诊断。
+            </p>
+            <button id="experimentRun" class="primary">开始实验</button>
+            <div id="experimentOutput"></div>
+          </section>
+        </section>
+        <footer>
+          SEARCH · VERIFY · COMPUTE
+          <span>响应 ID 续接 · 完整请求证据 · 本地内存历史</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

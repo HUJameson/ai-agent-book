@@ -34,7 +34,7 @@ class Config:
         "DASHSCOPE_BASE_URL",
         "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
     )
-    DASHSCOPE_MODEL = os.getenv("DASHSCOPE_MODEL", "qwen3.7-plus")
+    DASHSCOPE_MODEL = os.getenv("DASHSCOPE_MODEL", "qwen3.8-flash")
     BACKEND = os.getenv("BACKEND", "openai")
     MODEL_NAME = os.getenv("MODEL_NAME", "gpt-5.6-sol")
     DEFAULT_TEMPERATURE = 0.3  # legacy CLI compatibility; intentionally omitted
