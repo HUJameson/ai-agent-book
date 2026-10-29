@@ -298,6 +298,8 @@ usage, reported provider cost when available, and credential-free raw evidence.
 
 ## 显式后端与业务空间专属域名
 
+DashScope 当前默认模型为 `qwen3.8-flash`，可通过 `DASHSCOPE_MODEL` 或 `--model` 覆盖。下文及上方历史验收记录中的 `qwen3.7-plus` 保留原实验模型名称。
+
 `--backend`（未指定时取 `BACKEND`，默认 `openai`）决定请求协议与工具参数；Base URL 决定实际访问地址。百炼共享域名和业务空间专属域名均可配合 `--backend dashscope` 使用：
 
 ```dotenv
@@ -306,3 +308,15 @@ DASHSCOPE_BASE_URL=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible
 ```
 
 请替换业务空间 ID，并使用同地域、对应业务空间的 Key。程序化调用请显式传入 `GPT5NativeAgent(key, base_url=url, model=model, backend="dashscope")`。只有未传 backend 的旧调用才按 URL 推断；专属域名在旧推断中仍为 custom。非法 backend 会立即报错。百炼分支启用流式请求，但终端仍在任务结束后统一显示结果；流式不保证消除所有超时。
+
+## 本地 WebUI
+
+提供与 context 风格一致的任务对话、请求预览和实验验证界面。所有联网任务后台执行，支持历史回看与证据导出。
+
+```bash
+# 在 chapter1/search-codegen 目录，使用项目 Python 环境
+python -m pip install -r webui/requirements.txt
+python -m webui.app
+```
+
+访问 http://127.0.0.1:8001 。配置、启动与测试详见 [webui/README.md](webui/README.md)。页面启动及请求预览不会发起模型调用。
