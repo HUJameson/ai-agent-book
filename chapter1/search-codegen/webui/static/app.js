@@ -32,8 +32,11 @@ async function api(path, options = {}) {
   });
   if (response.status === 204) return null;
   const body = await response.json();
-  if (!response.ok)
-    throw new Error(body.error?.message || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(body.error?.message || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 function settings() {
@@ -320,6 +323,11 @@ function renderConversation(owner) {
       node("span", labels[turn.status] || turn.status, "badge " + turn.status),
     );
     card.append(title, node("div", turn.input, "turn-input"));
+    if (turn.status === "error" && turn.stream_preview) {
+      card.append(node("p", "未完成，仅供查看", "muted"));
+      for (const block of turn.stream_preview.blocks || [])
+        card.append(node("pre", block.text));
+    }
     if (turn.result) {
       card.append(
         resultView(turn.result),
@@ -433,6 +441,7 @@ async function selectOwner(id) {
     activate("experiment");
   }
   await history();
+  if (activeJob) renderLive();
 }
 function resetSession() {
   selected = null;
@@ -483,11 +492,22 @@ async function poll(jobId) {
     pollDelay = 1000;
     if (["queued", "running"].includes(job.status)) {
       showJob(job);
-      pollTimer = setTimeout(() => poll(jobId), 1000);
+      if (job.stream_preview) {
+        streamOwner = job.owner_id;
+        liveBlocks = new Map(
+          (job.stream_preview.blocks || []).map((b) => [b.item_key, b]),
+        );
+        liveTools = new Map(
+          (job.stream_preview.tools || []).map((t) => [t.call_id, t]),
+        );
+        renderLive();
+      }
+      if (!sseHealthy) pollTimer = setTimeout(() => poll(jobId), 1000);
       return;
     }
     clearInterval(clockTimer);
     activeJob = null;
+    stopEvents();
     $("jobPanel").hidden = true;
     $("experimentRun").disabled = false;
     updateConfig();
@@ -499,6 +519,16 @@ async function poll(jobId) {
       );
     else notice("任务已完成，结果与执行证据已更新。");
   } catch (e) {
+    if (e.status === 404) {
+      stopEvents();
+      clearInterval(clockTimer);
+      activeJob = null;
+      $("jobPanel").hidden = true;
+      $("experimentRun").disabled = false;
+      updateConfig();
+      notice("任务不存在，可能已重启或被回收。");
+      return;
+    }
     notice("连接中断，后台任务可能仍在运行：" + e.message);
     pollDelay = Math.min(pollDelay * 2, 10000);
     pollTimer = setTimeout(() => poll(jobId), pollDelay);
@@ -513,7 +543,7 @@ function follow(job) {
     elapsed_seconds: job.elapsed_seconds || 0,
     progress: job.progress || { done: 0, total: 0 },
   });
-  poll(job.id || job.job_id);
+  connectEvents(job.id || job.job_id);
 }
 async function run() {
   notice("");
@@ -692,4 +722,143 @@ async function init() {
     notice("初始化失败：" + e.message);
   }
 }
+// EventSource is observation only: reconnecting never submits a model request.
+let sseHealthy = false;
+let eventSource = null,
+  streamJob = null,
+  streamCursor = null,
+  streamFailures = 0,
+  reconnectTimer = null;
+let liveBlocks = new Map(),
+  liveTools = new Map(),
+  streamOwner = null;
+function renderLive() {
+  let box = document.getElementById("liveOutput");
+  if (selected !== streamOwner) {
+    if (box) box.remove();
+    return;
+  }
+  if (!box) {
+    box = node("section", undefined, "card live-output");
+    box.id = "liveOutput";
+    (activeJob?.kind === "experiment"
+      ? $("experimentOutput")
+      : $("conversation")
+    ).append(box);
+  }
+  box.replaceChildren(
+    node("h3", activeJob ? "正在生成 · SSE" : "未完成，仅供查看"),
+  );
+  for (const block of liveBlocks.values()) {
+    box.append(
+      node(
+        "p",
+        `${block.backend || ""} · ${block.stage || "turn"}`,
+        "muted tiny",
+      ),
+      node("pre", block.text),
+    );
+    if (block.truncated)
+      box.append(
+        node("p", "流式预览已截断，完整内容将在任务结束后提供。", "muted tiny"),
+      );
+  }
+  for (const tool of liveTools.values())
+    box.append(node("p", `${tool.type} · ${tool.status}`, "muted"));
+}
+function stopEvents() {
+  sseHealthy = false;
+  if (eventSource) eventSource.close();
+  eventSource = null;
+  clearTimeout(reconnectTimer);
+}
+function connectEvents(jobId, probe = false) {
+  if (typeof EventSource === "undefined") {
+    poll(jobId);
+    return;
+  }
+  if (streamJob !== jobId) {
+    stopEvents();
+    streamJob = jobId;
+    streamCursor = null;
+    streamFailures = 0;
+    liveBlocks.clear();
+    liveTools.clear();
+  }
+  if (eventSource) eventSource.close();
+  const source = new EventSource(
+    `/api/jobs/${jobId}/events` +
+      (streamCursor === null ? "" : `?after=${streamCursor}`),
+  );
+  eventSource = source;
+  function accept(event, kind) {
+    if (source !== eventSource) return;
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    const seq = Number(event.lastEventId);
+    if (kind !== "stream.reset" && streamCursor !== null && seq <= streamCursor)
+      return;
+    if (kind === "stream.reset") {
+      liveBlocks = new Map((data.blocks || []).map((b) => [b.item_key, b]));
+      liveTools = new Map((data.tools || []).map((t) => [t.call_id, t]));
+    }
+    streamCursor = seq;
+    streamOwner = data.owner_id || activeJob?.owner_id;
+    sseHealthy = true;
+    if (streamFailures) notice("流连接已恢复。");
+    streamFailures = 0;
+    clearTimeout(pollTimer);
+    if (kind === "answer.snapshot") liveBlocks.set(data.item_key, data);
+    if (kind === "tool.state") liveTools.set(data.call_id, data);
+    if (kind === "experiment.progress" && activeJob) {
+      activeJob.progress = data;
+      showJob(activeJob);
+    }
+    renderLive();
+    if (
+      kind === "job.done" ||
+      (kind === "stream.reset" && ["completed", "error"].includes(data.status))
+    ) {
+      stopEvents();
+      poll(jobId).then(() => {
+        if (data.status === "error") renderLive();
+      });
+    }
+  }
+  for (const kind of [
+    "job.state",
+    "answer.snapshot",
+    "tool.state",
+    "experiment.progress",
+    "stream.reset",
+    "job.done",
+  ])
+    source.addEventListener(kind, (event) => accept(event, kind));
+  source.onerror = () => {
+    if (source !== eventSource) return;
+    source.close();
+    sseHealthy = false;
+    eventSource = null;
+    streamFailures++;
+    notice("连接中断，后台任务可能仍在运行。");
+    if (streamFailures >= 3) {
+      notice("流连接不可用，已降级为状态查询。");
+      clearTimeout(pollTimer);
+      poll(jobId);
+    }
+    reconnectTimer = setTimeout(
+      () => {
+        if (activeJob) connectEvents(jobId, true);
+      },
+      streamFailures >= 3 ? 10000 : Math.min(1000 * 2 ** streamFailures, 10000),
+    );
+  };
+}
+
 init();
+
+window.addEventListener("pagehide", stopEvents);

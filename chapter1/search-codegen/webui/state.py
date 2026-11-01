@@ -36,6 +36,7 @@ class Store:
     ):
         self.lock = threading.RLock()
         self.owners, self.jobs = {}, {}
+        self.streams = {}
         self.current_job_id = None
         self.max_records, self.owner_budget, self.total_budget = (
             max_records,
@@ -116,6 +117,10 @@ class Store:
                 "result_ref": owner_id,
                 "_start": time.monotonic(),
             }
+            from .streaming import StreamLog
+
+            self.streams[job_id] = StreamLog(job_id, owner_id)
+            self.streams[job_id].emit("job.state", status="queued")
             self.jobs[job_id] = job
             self.current_job_id = owner["active_job_id"] = job_id
             owner["status"] = "queued"
@@ -125,11 +130,19 @@ class Store:
         with self.lock:
             job = self.jobs[job_id]
             job.update(status="running", started_at=now())
+            self.streams[job_id].status = "running"
+            self.streams[job_id].emit(
+                "job.state", status="running", started_at=job["started_at"]
+            )
             self.get(job["owner_id"])["status"] = "running"
 
     def progress(self, job_id, done, current):
         with self.lock:
             self.jobs[job_id]["progress"].update(done=done, current_backend=current)
+            self.streams[job_id].progress = dict(self.jobs[job_id]["progress"])
+            self.streams[job_id].emit(
+                "experiment.progress", **self.streams[job_id].progress
+            )
 
     def snapshot(self, job_id):
         with self.lock:
@@ -143,6 +156,9 @@ class Store:
             snap["elapsed_seconds"] = job.get(
                 "_elapsed", time.monotonic() - job["_start"]
             )
+            log = self.streams.get(job_id)
+            snap["stream_preview"] = log.snapshot() if log else None
+            snap["last_event_id"] = log.seq if log else None
             return snap
 
     def finish(self, job_id, error=None):
@@ -168,6 +184,23 @@ class Store:
                     status=job["status"], updated_at=now(), error=redact(error)
                 )
             finally:
+                self.streams[job_id].done(job["status"], job.get("error"))
+                if job.get("error") and not owner.get("evidence_limited"):
+                    for turn in owner.get("turns", []):
+                        if turn.get("job_id") == job_id:
+                            turn["stream_preview"] = self.streams[job_id].snapshot()
+                ended = [
+                    jid
+                    for jid in self.streams
+                    if self.jobs[jid]["status"] in ("completed", "error")
+                ]
+                for jid in ended[:-4]:
+                    log = self.streams[jid]
+                    with log.lock:
+                        log.events.clear()
+                        log.size = 0
+                        log.blocks.clear()
+                        log.tools.clear()
                 owner["active_job_id"] = None
                 if self.current_job_id == job_id:
                     self.current_job_id = None
@@ -181,6 +214,7 @@ class Store:
             self.owners.pop(owner_id)
             for jid in [j for j, v in self.jobs.items() if v["owner_id"] == owner_id]:
                 self.jobs.pop(jid)
+                self.streams.pop(jid, None)
 
     def clear(self):
         with self.lock:

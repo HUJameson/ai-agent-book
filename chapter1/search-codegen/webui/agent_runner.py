@@ -72,6 +72,7 @@ def options(config):
     kwargs = {
         "use_tools": config["use_tools"],
         "max_tokens": config["max_output_tokens"],
+        "stream": True,
     }
     if config["backend"] != "dashscope":
         kwargs.update(
@@ -117,7 +118,14 @@ def run_turn(store, owner_id, job_id, text):
         owner["turns"].append(turn)
         owner["title"] = text[:60]
     try:
-        result = agent.process_request(text, **options(config))
+        log = store.streams[job_id]
+        result = agent.process_request(
+            text,
+            on_event=lambda event: log.observe(
+                event, backend=config["backend"], stage="turn", turn_id=turn["id"]
+            ),
+            **options(config),
+        )
     except Exception:
         agent.previous_response_id = previous
         agent.conversation_history = history
@@ -135,6 +143,9 @@ def run_turn(store, owner_id, job_id, text):
         agent.conversation_history = history
     with store.lock:
         turn.update(
+            stream_preview=(
+                store.streams[job_id].snapshot() if not result.get("success") else None
+            ),
             result=result,
             api_turns=deepcopy(agent.api_turns[offset:]),
             finished_at=now(),
@@ -156,7 +167,12 @@ def run_experiment(store, owner_id, job_id, data):
     for index, backend in enumerate(data.backends):
         store.progress(job_id, index, backend)
         try:
-            run = experiment.run_backend(backend, data.reasoning)
+            run = experiment.run_backend(
+                backend,
+                data.reasoning,
+                stream=True,
+                on_event=store.streams[job_id].observe,
+            )
         except Exception as exc:
             run = {
                 "backend": backend,

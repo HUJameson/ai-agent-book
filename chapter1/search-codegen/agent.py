@@ -35,11 +35,18 @@ class GPT5NativeAgent:
         self.model = model
         if backend is not None and backend not in {"openai", "openrouter", "dashscope"}:
             raise ValueError("backend must be openai, openrouter, or dashscope")
-        self.provider = backend if backend is not None else (
-            "openai" if self.base_url == "https://api.openai.com/v1" else
-            "openrouter" if "openrouter.ai" in self.base_url else
-            "dashscope" if "dashscope" in self.base_url else
-            "custom"
+        self.provider = (
+            backend
+            if backend is not None
+            else (
+                "openai"
+                if self.base_url == "https://api.openai.com/v1"
+                else (
+                    "openrouter"
+                    if "openrouter.ai" in self.base_url
+                    else "dashscope" if "dashscope" in self.base_url else "custom"
+                )
+            )
         )
         self.conversation_history: List[Dict[str, Any]] = []
         self.system_prompt = self._create_system_prompt()
@@ -88,9 +95,17 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
         verbosity: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
         background: bool = False,
+        stream: Optional[bool] = None,
     ) -> Dict[str, Any]:
         if self.provider != "dashscope":
-            if reasoning_effort not in {"none", "low", "medium", "high", "xhigh", "max"}:
+            if reasoning_effort not in {
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+            }:
                 raise ValueError("Unsupported GPT-5.6 reasoning effort")
             if verbosity not in {None, "low", "medium", "high"}:
                 raise ValueError("verbosity must be low, medium, or high")
@@ -109,6 +124,8 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
             request["store"] = True
             if verbosity:
                 request["text"] = {"verbosity": verbosity}
+        if stream is not None:
+            request["stream"] = stream
         if max_output_tokens:
             request["max_output_tokens"] = max_output_tokens
         if use_tools:
@@ -127,7 +144,11 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
             if not isinstance(item, dict) or item.get("type") != "message":
                 continue
             for content in item.get("content") or []:
-                if isinstance(content, dict) and content.get("type") == "output_text" and content.get("text"):
+                if (
+                    isinstance(content, dict)
+                    and content.get("type") == "output_text"
+                    and content.get("text")
+                ):
                     chunks.append(content["text"])
         return "\n".join(chunks).strip()
 
@@ -139,7 +160,8 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
             item
             for item in response.get("output") or []
             if isinstance(item, dict)
-            and item.get("type") in {
+            and item.get("type")
+            in {
                 "web_search_call",
                 "code_interpreter_call",
                 "hosted_tool_call",
@@ -169,15 +191,19 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
                 action = item.get("action")
                 if isinstance(action, dict):
                     for source in action.get("sources") or []:
-                        url = source if isinstance(source, str) else (source.get("url") if isinstance(source, dict) else None)
-                        if url:
-                            citations.append(
-                                {"type": "url_citation", "url": url}
+                        url = (
+                            source
+                            if isinstance(source, str)
+                            else (
+                                source.get("url") if isinstance(source, dict) else None
                             )
+                        )
+                        if url:
+                            citations.append({"type": "url_citation", "url": url})
         return citations
 
     def _post_responses(
-        self, request: Dict[str, Any]
+        self, request: Dict[str, Any], on_event=None
     ) -> tuple[int, Dict[str, Any], Optional[Dict[str, int]]]:
         """Send one Responses request and return (status, body, stream_events).
 
@@ -213,23 +239,63 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
             status_code = http_response.status_code
             if not http_response.ok:
                 return status_code, {"raw_text": http_response.text}, event_counts
-            for line in http_response.iter_lines(decode_unicode=True):
-                if not line or not line.startswith("data:"):
+            http_response.encoding = "utf-8"
+            data_lines = []
+            for line in http_response.iter_lines(chunk_size=1, decode_unicode=True):
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
+                if line and line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip(" "))
                     continue
-                data = line[len("data:"):].strip()
+                if line or not data_lines:
+                    continue
+                data = "\n".join(data_lines)
+                data_lines = []
                 if data == "[DONE]":
                     break
                 try:
                     event = json.loads(data)
                 except ValueError:
                     continue
+                if not isinstance(event, dict):
+                    continue
                 event_type = event.get("type") or "unknown"
                 event_counts[event_type] = event_counts.get(event_type, 0) + 1
-                if event_type in {"response.completed", "response.failed"}:
+                if on_event is not None:
+                    try:
+                        on_event(event)
+                    except Exception:
+                        event_counts["observer_error"] = (
+                            event_counts.get("observer_error", 0) + 1
+                        )
+                        on_event = None
+                if event_type in {
+                    "response.completed",
+                    "response.failed",
+                    "response.incomplete",
+                }:
                     final_response = event.get("response")
+                    break
+                if event_type == "error":
+                    final_response = {
+                        "error": event.get("error")
+                        or {
+                            "type": "stream_error",
+                            "message": event.get("message", "Stream failed"),
+                        }
+                    }
+                    break
         if final_response is None:
-            return status_code, {"error": {"type": "stream_incomplete",
-                                           "message": "stream ended without response.completed"}}, event_counts
+            return (
+                status_code,
+                {
+                    "error": {
+                        "type": "stream_incomplete",
+                        "message": "stream ended without response.completed",
+                    }
+                },
+                event_counts,
+            )
         return status_code, final_response, event_counts
 
     def process_request(
@@ -243,6 +309,8 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
         verbosity: Optional[str] = None,
         dry_run: bool = False,
         background: bool = False,
+        stream: Optional[bool] = None,
+        on_event=None,
     ) -> Dict[str, Any]:
         """Create one Responses API turn and retain its complete trace.
 
@@ -257,6 +325,7 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
             verbosity=verbosity,
             max_output_tokens=max_tokens,
             background=background,
+            stream=stream,
         )
         if dry_run:
             return {
@@ -271,7 +340,11 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
 
         started = time.monotonic()
         try:
-            status_code, response, stream_events = self._post_responses(request)
+            status_code, response, stream_events = (
+                self._post_responses(request, on_event)
+                if on_event is not None
+                else self._post_responses(request)
+            )
             elapsed = round(time.monotonic() - started, 6)
             turn = {
                 "request": json.loads(json.dumps(request, ensure_ascii=False)),
@@ -282,10 +355,23 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
             if stream_events:
                 turn["stream_event_counts"] = stream_events
             self.api_turns.append(turn)
-            if not isinstance(response, dict) or status_code >= 400 or response.get("error"):
-                error = (response.get("error") if isinstance(response, dict) else None) or {
+            if (
+                not isinstance(response, dict)
+                or status_code >= 400
+                or response.get("error")
+            ):
+                error = (
+                    response.get("error") if isinstance(response, dict) else None
+                ) or {
                     "type": "http_error",
-                    "message": (response.get("raw_text") if isinstance(response, dict) else None) or (json.dumps(response)[:500] if response is not None else "Empty response"),
+                    "message": (
+                        response.get("raw_text") if isinstance(response, dict) else None
+                    )
+                    or (
+                        json.dumps(response)[:500]
+                        if response is not None
+                        else "Empty response"
+                    ),
                 }
                 return {
                     "success": False,
@@ -295,7 +381,10 @@ code_interpreter 实际执行，不得口算或声称运行了代码。"""
                     "raw_response": response,
                     "tool_calls": [],
                     "citations": [],
-                    "usage": (response.get("usage") if isinstance(response, dict) else {}) or {},
+                    "usage": (
+                        response.get("usage") if isinstance(response, dict) else {}
+                    )
+                    or {},
                     "model": self.model,
                     "provider": self.provider,
                     "base_url": self.base_url,
@@ -387,7 +476,10 @@ class GPT5AgentChain:
 
     def add_step(self, request: str, **kwargs: Any) -> "GPT5AgentChain":
         self.chain_results.append(
-            {"request": request, "result": self.agent.process_request(request, **kwargs)}
+            {
+                "request": request,
+                "result": self.agent.process_request(request, **kwargs),
+            }
         )
         return self
 
