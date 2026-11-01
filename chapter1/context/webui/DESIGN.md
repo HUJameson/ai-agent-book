@@ -120,6 +120,14 @@
 - TestClient 不触网：providers/samples/defaults 契约；单任务 monkeypatch `agent_runner.run_single_task`（参数透传 + status 映射 + grounding 字段）；job 生命周期用 fake 套件（毫秒级、2 案例断言进度 done/total 递增、报告端点返回 MD 文本）；409 并发拒绝；404 轮询；历史 FIFO。
 - 既有 52 测试零回归 + CLI 行为不变为硬门槛。
 
+## 7.5 单任务流式输出（D12，2026-11-01）
+
+- 新增 `/api/run/stream`，POST + fetch 读取 NDJSON；事件为 turn、delta（content/reasoning）、done（历史记录）与 error；空闲 heartbeat 防止长工具执行期间连接无数据。
+- GUI 对接层包装单个 Agent 的 completion 客户端，将 `stream=True` 的增量按轮组装成标准 ChatCompletion，保留 reasoning_content、tool_calls 索引及分片参数，再交给原 ReAct 逻辑；不改 agent.py。
+- worker 持有全局执行权至真正结束；浏览器断开不取消线程，最终结果仍写历史；响应生成器断开后不再缓存事件。请求预检在流开始前返回 400/409，流开始后的异常用 error 事件。
+- 前端按轮展示真实思考/回复文本，使用 textContent；工具参数不当正文输出。done 后沿用完整结果渲染；保留不完整流的错误提示。
+- 离线测试覆盖分片工具参数、思考拼接、完成入史、异常释放锁；无需真实模型调用。
+
 ## 8. 演进触发点（任一出现 → 另写详细设计）
 
 1. 前端需要多页/路由或组件框架

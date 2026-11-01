@@ -230,13 +230,16 @@ def _trim_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def run_single_task(
-    task: str, context_mode: str, provider: str, model: Optional[str] = None
+    task: str, context_mode: str, provider: str, model: Optional[str] = None, emit=None
 ) -> Dict[str, Any]:
     """执行单任务并组装记录（调用方持有执行权，见 job_manager.EXECUTION_LOCK）。"""
     ensure_provider_ready(provider, model)
     mode = ContextMode(context_mode)
     api_key = resolve_api_key(provider, model)
     agent = ContextAwareAgent(api_key, mode, provider=provider, model=model)
+    if emit is not None:
+        from webui.streaming import streaming_client
+        agent.client = streaming_client(agent.client, emit)
 
     started = time.monotonic()
     result = agent.execute_task(task)

@@ -6,11 +6,14 @@
 
 import argparse
 import logging
+import json
+import queue
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -145,6 +148,58 @@ def run_single(req: RunRequest) -> Dict[str, Any]:
     finally:
         EXECUTION_LOCK.release()
     return STORE.add(record)
+
+
+@app.post("/api/run/stream")
+def run_single_stream(req: RunRequest):
+    _validate_provider(req.provider)
+    try:
+        agent_runner.ensure_provider_ready(req.provider, req.model)
+    except MissingKeyError as exc:
+        raise HTTPException(status_code=400, detail=f"无法执行：{exc}")
+    if not EXECUTION_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="另一个任务正在执行，请稍候。")
+    events = queue.Queue()
+    disconnected = threading.Event()
+
+    def emit(event):
+        if not disconnected.is_set():
+            events.put(event)
+
+    def worker():
+        try:
+            record = agent_runner.run_single_task(
+                req.task, req.context_mode, req.provider, req.model, emit=emit
+            )
+            emit({"type": "done", "record": STORE.add(record)})
+        except Exception:
+            logger.exception("流式单任务执行失败")
+            emit({"type": "error", "message": "执行失败，请查看服务端日志并重试。"})
+        finally:
+            EXECUTION_LOCK.release()
+            emit(None)
+
+    def generate():
+        try:
+            while True:
+                try:
+                    event = events.get(timeout=5)
+                except queue.Empty:
+                    yield json.dumps({"type": "heartbeat"}) + "\n"
+                    continue
+                if event is None:
+                    break
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        finally:
+            disconnected.set()
+
+    try:
+        threading.Thread(target=worker, daemon=True).start()
+    except Exception:
+        EXECUTION_LOCK.release()
+        raise
+    return StreamingResponse(generate(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/ablation")

@@ -140,8 +140,9 @@ async function runSingle() {
   btn.disabled = true;
   $("status-hint").textContent = "🧠 Agent 执行中（ReAct 循环，单次 10s-3min）…";
   $("error-box").classList.add("hidden");
+  $("live-output").classList.add("hidden");
   try {
-    const res = await fetch("/api/run", {
+    const res = await fetch("/api/run/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -151,13 +152,61 @@ async function runSingle() {
         model: $("opt-model").value.trim() || null,
       }),
     });
-    const data = await res.json();
-    if (!res.ok) { showError(data.detail || `请求失败（HTTP ${res.status}）`); return; }
-    renderSingleResult(data);
+    if (!res.ok) { const data = await res.json(); showError(data.detail || `请求失败（HTTP ${res.status}）`); return; }
+    const live = $("live-output");
+    live.classList.remove("hidden");
+    live.textContent = "等待模型输出…";
+    $("result").classList.add("hidden");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "", completed = false, current = null;
+    function handleEvent(event) {
+      if (event.type === "turn") {
+        if (!current) live.textContent = "";
+        const turn = document.createElement("section");
+        const title = document.createElement("h3");
+        title.textContent = `第 ${event.iteration} 轮 · 生成中`;
+        const reasoning = document.createElement("pre");
+        reasoning.className = "live-reasoning";
+        const content = document.createElement("pre");
+        turn.append(title, reasoning, content);
+        live.append(turn);
+        current = {reasoning, content};
+      } else if (event.type === "delta" && current) {
+        current[event.field === "reasoning" ? "reasoning" : "content"].append(document.createTextNode(event.text));
+      } else if (event.type === "done") {
+        if (event.record.status === "error") {
+          showError(event.record.error || "模型执行失败");
+        } else {
+          live.classList.add("hidden");
+        }
+        renderSingleResult(event.record);
+        completed = true;
+      } else if (event.type === "error") {
+        throw new Error(event.message);
+      }
+    }
+    try {
+      while (true) {
+        const {value, done} = await reader.read();
+        buffer += decoder.decode(value, {stream: !done});
+        let newline;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          if (line.trim()) handleEvent(JSON.parse(line));
+        }
+        if (done) break;
+      }
+      if (buffer.trim()) handleEvent(JSON.parse(buffer));
+      if (!completed) throw new Error("连接提前断开，输出尚未完成；可稍后从历史记录查看结果。");
+    } finally {
+      await reader.cancel();
+    }
     $("task").value = "";
     refreshHistory();
   } catch (e) {
-    showError("网络错误：无法连接本地服务。");
+    showError(e.message || "网络错误：无法连接本地服务。");
   } finally {
     btn.disabled = false;
     $("status-hint").textContent = "";
