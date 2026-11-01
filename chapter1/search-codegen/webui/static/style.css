@@ -555,3 +555,11 @@ footer span {
     display: none;
   }
 }
+
+.live-output {
+  border-color: #477d87;
+}
+.live-output pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

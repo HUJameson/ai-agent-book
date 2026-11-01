@@ -305,7 +305,7 @@ def test_experiment_partial_failure_continues(client, env):
     env.setattr(Config, "OPENAI_API_KEY", "fake-openai")
     seen = []
 
-    def run(backend, reasoning):
+    def run(backend, reasoning, **kwargs):
         seen.append(backend)
         if backend == "openai":
             raise RuntimeError("unavailable")
@@ -431,7 +431,7 @@ def test_empty_response_is_explained(client, env):
 
 
 def test_experiment_completed_but_acceptance_false(client, env):
-    def run(backend, reasoning):
+    def run(backend, reasoning, **kwargs):
         return {
             "backend": backend,
             "started": True,

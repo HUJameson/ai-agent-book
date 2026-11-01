@@ -30,7 +30,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from agent import GPT5NativeAgent
 from config import Config
 
-
 ASEAN_TASK = """Research the current official capitals and reliable coordinates
 for the ten ASEAN member states. You must use hosted web search and cite the
 sources. Then you must use the hosted Python tool—not mental arithmetic—to
@@ -71,7 +70,10 @@ def haversine_km(a: Tuple[float, float], b: Tuple[float, float]) -> float:
     lat1, lon1 = map(math.radians, a)
     lat2, lon2 = map(math.radians, b)
     dlat, dlon = lat2 - lat1, lon2 - lon1
-    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    h = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
     return 2 * radius * math.asin(math.sqrt(h))
 
 
@@ -113,15 +115,17 @@ def completed_calls(result: Dict[str, Any], kind: str) -> List[Dict[str, Any]]:
 
 def url_citations(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
-        item for item in result.get("citations") or [] if item.get("type") == "url_citation"
+        item
+        for item in result.get("citations") or []
+        if item.get("type") == "url_citation"
     ]
 
 
 def model_identity_exact(result: Dict[str, Any]) -> bool:
     """The returned model must be exactly the requested model."""
-    requested = (result.get("requested_model") or result.get("model") or "").removeprefix(
-        "openai/"
-    )
+    requested = (
+        result.get("requested_model") or result.get("model") or ""
+    ).removeprefix("openai/")
     returned = (result.get("model") or "").removeprefix("openai/")
     return bool(requested) and requested == returned
 
@@ -143,7 +147,9 @@ def validate_asean(
         "closest_pair_matches_independent_reference": (
             pair_city.lower() in answer.lower() and other_city.lower() in answer.lower()
         ),
-        "distance_reported": any(unit in answer.lower() for unit in ("km", "公里", "千米")),
+        "distance_reported": any(
+            unit in answer.lower() for unit in ("km", "公里", "千米")
+        ),
     }
     return {
         "checks": checks,
@@ -159,8 +165,10 @@ def validate_asean(
 
 def is_clarifying_question(result: Dict[str, Any]) -> bool:
     text = result.get("response") or ""
-    return result.get("success") is True and not result.get("tool_calls") and (
-        "?" in text or "？" in text
+    return (
+        result.get("success") is True
+        and not result.get("tool_calls")
+        and ("?" in text or "？" in text)
     )
 
 
@@ -172,7 +180,9 @@ def validate_clarification(
     checks = {
         "first_turn_clarified_before_tools": is_clarifying_question(first),
         "continuation_used_previous_response_id": bool(
-            second and second.get("request", {}).get("previous_response_id") == first.get("response_id")
+            second
+            and second.get("request", {}).get("previous_response_id")
+            == first.get("response_id")
         ),
         "followup_succeeded": bool(second and second.get("success")),
         "followup_web_search_completed": bool(
@@ -210,7 +220,19 @@ def total_usage(results: Iterable[Dict[str, Any] | None]) -> Dict[str, Any]:
     return totals
 
 
-def run_backend(backend: str, reasoning: str) -> Dict[str, Any]:
+def run_backend(
+    backend: str, reasoning: str, *, stream=None, on_event=None
+) -> Dict[str, Any]:
+    def stream_options(stage):
+        kwargs = {}
+        if stream is not None:
+            kwargs["stream"] = stream
+        if on_event is not None:
+            kwargs["on_event"] = lambda event: on_event(
+                event, backend=backend, stage=stage
+            )
+        return kwargs
+
     key, base_url, model = Config.resolve(backend)
     if not key:
         return {"backend": backend, "started": False, "error": "credential_missing"}
@@ -218,14 +240,18 @@ def run_backend(backend: str, reasoning: str) -> Dict[str, Any]:
     asean_agent = GPT5NativeAgent(key, base_url=base_url, model=model, backend=backend)
     asean = asean_agent.process_request(
         ASEAN_TASK,
+        **stream_options("asean"),
         reasoning_effort=reasoning,
         verbosity="high",
         max_tokens=16000,
     )
 
-    clarification_agent = GPT5NativeAgent(key, base_url=base_url, model=model, backend=backend)
+    clarification_agent = GPT5NativeAgent(
+        key, base_url=base_url, model=model, backend=backend
+    )
     first = clarification_agent.process_request(
         AMBIGUOUS_TASK,
+        **stream_options("clarification_first"),
         reasoning_effort="medium",
         verbosity="medium",
         max_tokens=4000,
@@ -234,6 +260,7 @@ def run_backend(backend: str, reasoning: str) -> Dict[str, Any]:
     if is_clarifying_question(first):
         second = clarification_agent.process_request(
             CLARIFICATION_REPLY,
+            **stream_options("clarification_followup"),
             reasoning_effort=reasoning,
             verbosity="high",
             max_tokens=16000,

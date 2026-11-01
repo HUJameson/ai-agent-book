@@ -60,7 +60,11 @@ def markdown(owner, turn_id=None):
                 "## 用户任务\n",
                 turn.get("input", ""),
                 "\n## 模型回复\n",
-                (turn.get("result") or {}).get("response") or "（无可用答案）",
+                (
+                    ((turn.get("result") or {}).get("response") or "（无可用答案）")
+                    if turn.get("status") == "completed"
+                    else "（本轮失败，未完成正文不作为答案导出）"
+                ),
             ]
         )
     return redact("\n\n".join(parts))

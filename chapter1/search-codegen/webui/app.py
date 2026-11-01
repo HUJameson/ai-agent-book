@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from .schemas import SessionInput, TurnInput, PreviewInput, ExperimentInput
 from .state import Store, StateError
@@ -83,7 +83,8 @@ def create_app(store=None, manager=None):
                     status_code=415,
                 )
         response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        if "text/event-stream" not in response.headers.get("content-type", ""):
+            response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
@@ -186,6 +187,40 @@ def create_app(store=None, manager=None):
             return (
                 [store.snapshot(store.current_job_id)] if store.current_job_id else []
             )
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def events(job_id: str, request: Request, after: str | None = None):
+        from .streaming import event_frames
+
+        cursor = request.headers.get("last-event-id") or after
+        if cursor is not None and (not cursor.isascii() or not cursor.isdecimal()):
+            raise StateError("invalid_cursor", "事件游标必须为非负整数", 422)
+        with store.lock:
+            (
+                store.get(store.jobs[job_id]["owner_id"])
+                if job_id in store.jobs
+                else store.snapshot(job_id)
+            )
+            log = store.streams[job_id]
+            if (
+                log.subscribers >= 4
+                or sum(l.subscribers for l in store.streams.values()) >= 8
+            ):
+                raise StateError("too_many_subscribers", "订阅连接过多", 429)
+            log.subscribers += 1
+        return StreamingResponse(
+            event_frames(
+                log,
+                int(cursor) if cursor is not None else None,
+                request,
+                lambda: job_id in store.jobs,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-store, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/api/jobs/{job_id}")
     def job(job_id: str):

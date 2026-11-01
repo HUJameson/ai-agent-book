@@ -64,11 +64,32 @@ async function until(check) {
   }
   assert.fail("DOM state did not settle");
 }
-async function boot({ owner = null, active = false } = {}) {
+async function boot({ owner = null, active = false, sse = false } = {}) {
   const dom = new JSDOM(
     fs.readFileSync(path.join(staticDir, "index.html"), "utf8"),
     { url: "http://127.0.0.1:8001", runScripts: "outside-only" },
   );
+  const streams = [];
+  if (sse)
+    dom.window.EventSource = class {
+      constructor(url) {
+        this.url = url;
+        this.listeners = {};
+        streams.push(this);
+      }
+      addEventListener(name, fn) {
+        this.listeners[name] = fn;
+      }
+      close() {
+        this.closed = true;
+      }
+      emit(name, id, payload) {
+        this.listeners[name]?.({
+          lastEventId: String(id),
+          data: JSON.stringify(payload),
+        });
+      }
+    };
   const w = dom.window,
     calls = [];
   let stored = owner,
@@ -143,7 +164,7 @@ async function boot({ owner = null, active = false } = {}) {
   for (const file of ["vendor/marked.min.js", "vendor/purify.min.js", "app.js"])
     w.eval(fs.readFileSync(path.join(staticDir, file), "utf8"));
   await until(() => w.document.querySelector("#samples button"));
-  return { dom, w, calls };
+  return { dom, w, calls, streams };
 }
 
 test("backend capabilities and dry-run preview use real input without submitting a turn", async () => {
@@ -294,5 +315,110 @@ test("input metrics split cache hits, preserve zero, and do not invent missing c
     } finally {
       dom.window.close();
     }
+  }
+});
+
+test("SSE previews arrive before completion, replace snapshots and ignore duplicate IDs", async () => {
+  const owner = record();
+  owner.status = "running";
+  owner.active_job_id = "job-unit";
+  const { dom, w, calls, streams } = await boot({
+    owner,
+    active: true,
+    sse: true,
+  });
+  try {
+    await until(() => streams.length === 1);
+    const source = streams[0];
+    source.emit("answer.snapshot", 1, {
+      owner_id: owner.id,
+      item_key: "answer",
+      text: "第一段",
+      backend: "dashscope",
+      stage: "turn",
+    });
+    assert.match(w.document.querySelector("#liveOutput").textContent, /第一段/);
+    assert.equal(calls.filter((c) => c.url === "/api/jobs/job-unit").length, 0);
+    source.emit("answer.snapshot", 1, {
+      owner_id: owner.id,
+      item_key: "answer",
+      text: "重复",
+    });
+    assert.doesNotMatch(
+      w.document.querySelector("#liveOutput").textContent,
+      /重复/,
+    );
+    source.emit("answer.snapshot", 2, {
+      owner_id: owner.id,
+      item_key: "answer",
+      text: "第一段第二段",
+    });
+    assert.match(
+      w.document.querySelector("#liveOutput").textContent,
+      /第一段第二段/,
+    );
+    source.emit("tool.state", 3, {
+      owner_id: owner.id,
+      call_id: "tool",
+      type: "web_search_call",
+      status: "in_progress",
+    });
+    assert.match(
+      w.document.querySelector("#liveOutput").textContent,
+      /in_progress/,
+    );
+    source.emit("job.done", 4, { owner_id: owner.id, status: "completed" });
+    await until(() =>
+      w.document.querySelector("#notice").textContent.includes("任务已完成"),
+    );
+    assert.equal(source.closed, true);
+    assert.equal(calls.filter((c) => c.method === "POST").length, 0);
+    assert.match(
+      w.document.querySelector("#conversation").textContent,
+      /安全结果/,
+    );
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("SSE reset replaces stale blocks and reconnect carries cursor without another submission", async () => {
+  const owner = record();
+  owner.status = "running";
+  owner.active_job_id = "job-unit";
+  const { dom, w, calls, streams } = await boot({
+    owner,
+    active: true,
+    sse: true,
+  });
+  try {
+    await until(() => streams.length === 1);
+    streams[0].emit("answer.snapshot", 1, {
+      owner_id: owner.id,
+      item_key: "a",
+      text: "旧内容",
+    });
+    streams[0].emit("stream.reset", 5, {
+      owner_id: owner.id,
+      status: "running",
+      blocks: [{ item_key: "a", text: "恢复内容" }],
+      tools: [],
+    });
+    assert.match(
+      w.document.querySelector("#liveOutput").textContent,
+      /恢复内容/,
+    );
+    assert.doesNotMatch(
+      w.document.querySelector("#liveOutput").textContent,
+      /旧内容/,
+    );
+    streams[0].onerror();
+    await until(() => streams.length === 2);
+    assert.match(streams[1].url, /after=5/);
+    assert.equal(calls.filter((c) => c.method === "POST").length, 0);
+    w.dispatchEvent(new w.Event("pagehide"));
+    assert.equal(streams[1].closed, true);
+  } finally {
+    dom.window.close();
   }
 });
